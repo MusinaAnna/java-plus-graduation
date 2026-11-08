@@ -105,6 +105,7 @@
     </dependencies>
 
     <build>
+        <finalName>stats-server-${project.version}</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
