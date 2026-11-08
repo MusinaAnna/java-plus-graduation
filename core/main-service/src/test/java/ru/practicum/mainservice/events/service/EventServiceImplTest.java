@@ -16,6 +16,7 @@ import ru.practicum.common.entity.Location;
 import ru.practicum.common.entity.User;
 import ru.practicum.common.enums.AdminStateAction;
 import ru.practicum.common.enums.EventState;
+import ru.practicum.common.enums.RequestStatus;
 import ru.practicum.common.enums.UserStateAction;
 import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.common.exception.ConflictException;
@@ -329,11 +330,17 @@ public class EventServiceImplTest {
                 .thenReturn(eventPage);
         when(eventMapper.toShortDto(any(Event.class)))
                 .thenReturn(createEventShortDto(event));
+        when(participationRequestRepository.countByEventIdAndStatus(1L, RequestStatus.CONFIRMED))
+                .thenReturn(2L);
+        when(statsClient.getStats(anyString(), anyString(), anyList(), eq(true)))
+                .thenReturn(List.of());
 
         List<EventShortDto> result = eventService.getUserEvents(userId, 0, 10);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getId()).isEqualTo(1L);
+        assertThat(result.get(0).getConfirmedRequests()).isEqualTo(2L);
+        assertThat(result.get(0).getViews()).isEqualTo(0L);
         verify(eventRepository).findByInitiatorId(eq(userId), any(PageRequest.class));
     }
 
@@ -363,11 +370,19 @@ public class EventServiceImplTest {
                 .thenReturn(newEvent);
         when(eventRepository.save(any(Event.class))).thenReturn(event);
         when(eventMapper.toFullDto(any(Event.class))).thenReturn(eventFullDto);
+        eventFullDto.setConfirmedRequests(null);
+        eventFullDto.setViews(null);
+        when(participationRequestRepository.countByEventIdAndStatus(1L, RequestStatus.CONFIRMED))
+                .thenReturn(0L);
+        when(statsClient.getStats(anyString(), anyString(), anyList(), eq(true)))
+                .thenReturn(List.of());
 
         EventFullDto result = eventService.createEvent(userId, newEventDto);
 
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getConfirmedRequests()).isEqualTo(0L);
+        assertThat(result.getViews()).isEqualTo(0L);
         verify(eventRepository).save(any(Event.class));
     }
 
@@ -411,11 +426,19 @@ public class EventServiceImplTest {
         when(userService.getUserEntity(userId)).thenReturn(initiator);
         when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(eventMapper.toFullDto(event)).thenReturn(eventFullDto);
+        eventFullDto.setConfirmedRequests(null);
+        eventFullDto.setViews(null);
+        when(participationRequestRepository.countByEventIdAndStatus(1L, RequestStatus.CONFIRMED))
+                .thenReturn(3L);
+        when(statsClient.getStats(anyString(), anyString(), anyList(), eq(true)))
+                .thenReturn(List.of());
 
         EventFullDto result = eventService.getUserEvent(userId, eventId);
 
         assertThat(result).isNotNull();
         assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getConfirmedRequests()).isEqualTo(3L);
+        assertThat(result.getViews()).isEqualTo(0L);
         verify(eventRepository).findById(eventId);
     }
 

@@ -37,6 +37,8 @@ public interface EventMapper {
      * @param event сущность события
      * @return DTO с краткой информацией о событии
      */
+    @Mapping(target = "confirmedRequests", ignore = true)
+    @Mapping(target = "views", ignore = true)
     EventShortDto toShortDto(Event event);
 
     /**

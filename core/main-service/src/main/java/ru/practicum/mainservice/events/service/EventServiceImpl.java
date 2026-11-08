@@ -166,7 +166,11 @@ public class EventServiceImpl implements EventService {
         Page<Event> page = repository.findByInitiatorId(userId, pageable);
 
         return page.getContent().stream()
-                .map(mapper::toShortDto)
+                .map(event -> {
+                    EventShortDto dto = mapper.toShortDto(event);
+                    enrichShortDtoWithViewsAndRequests(dto, event);
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -205,7 +209,7 @@ public class EventServiceImpl implements EventService {
         event = repository.save(event);
         log.info("Created event with id: {}", event.getId());
 
-        return mapper.toFullDto(event);
+        return enrichWithViewsAndRequests(event);
     }
 
     @Override
@@ -224,7 +228,7 @@ public class EventServiceImpl implements EventService {
             throw new NotFoundException("Event with id " + eventId + " not found for user " + userId);
         }
 
-        return mapper.toFullDto(event);
+        return enrichWithViewsAndRequests(event);
     }
 
     @Override
@@ -272,7 +276,7 @@ public class EventServiceImpl implements EventService {
         event = repository.save(event);
         log.info("Updated event with id: {}", eventId);
 
-        return mapper.toFullDto(event);
+        return enrichWithViewsAndRequests(event);
     }
 
     @Override
