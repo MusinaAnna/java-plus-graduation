@@ -6,16 +6,17 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.0</version>
+		<version>3.3.13</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 
 	<name>Explore With Me</name>
     <modules>
-		<module>common</module>
-        <module>main-service</module>
-		<module>statistics-service</module>
-	</modules>
+        <module>common</module>
+        <module>statistics-service</module>
+        <module>infra</module>
+        <module>core</module>
+    </modules>
 
     <groupId>ru.practicum</groupId>
 	<artifactId>explore-with-me</artifactId>
@@ -24,8 +25,26 @@
 
 	<properties>
 		<java.version>21</java.version>
+        <spring-cloud.version>2023.0.6</spring-cloud.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 	</properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.retry</groupId>
+                <artifactId>spring-retry</artifactId>
+                <version>2.0.10</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
 	<build>
 		<pluginManagement>

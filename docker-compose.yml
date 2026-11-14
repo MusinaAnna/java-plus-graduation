@@ -1,7 +1,24 @@
 services:
+  discovery-server:
+    build: ./infra/discovery-server
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8761/actuator/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 25
+
+  config-server:
+    build: ./infra/config-server
+    depends_on:
+      discovery-server:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+
   stats-db:
     image: postgres:16.1
-    container_name: stats-db
     environment:
       POSTGRES_DB: ewm-stats
       POSTGRES_USER: postgres
@@ -11,22 +28,10 @@ services:
     volumes:
       - stats-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  stats-server:
-    build: ./statistics-service/statistics-service-server
-    container_name: stats-server
-    depends_on:
-      - stats-db
-    ports:
-      - "9090:9090"
-    environment:
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://stats-db:5432/ewm-stats"
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm-stats"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   ewm-db:
     image: postgres:16.1
@@ -39,31 +44,50 @@ services:
     volumes:
       - ewm-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  stats-server:
+    build: ./statistics-service/statistics-service-server
+    depends_on:
+      config-server:
+        condition: service_started
+      stats-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://stats-db:5432/ewm-stats
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
 
   ewm-service:
-    build: ./main-service
-    container_name: ewm-service
+    build: ./core/main-service
     depends_on:
+      config-server:
+        condition: service_started
       ewm-db:
         condition: service_healthy
+      stats-server:
+        condition: service_started
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ewm-db:5432/ewm
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+  gateway-server:
+    build: ./infra/gateway-server
+    depends_on:
+      ewm-service:
+        condition: service_started
+      config-server:
+        condition: service_started
     ports:
       - "8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://ewm-db:5432/ewm"
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-      STATS_SERVER_URL: "http://stats-server:9090"
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+      EUREKA_URI: http://discovery-server:8761/eureka/
 
 volumes:
   stats-db-data:
