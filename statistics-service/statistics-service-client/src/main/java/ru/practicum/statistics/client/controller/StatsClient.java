@@ -70,7 +70,10 @@ public class StatsClient implements StatsClientApi {
             return response.getBody() == null ? List.of() : response.getBody();
         } catch (Exception exception) {
             log.error("Could not fetch statistics", exception);
-            return List.of();
+            throw new StatsServerUnavailable(
+                    "Statistics service is temporarily unavailable",
+                    exception
+            );
         }
     }
 }
