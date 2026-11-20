@@ -22,7 +22,7 @@ public class FeignClientErrorConfiguration {
 
     @Bean
     public Retryer retryer() {
-        return new Retryer.Default(200, 1000, 3);
+        return new Retryer.Default(3000, 3000, 3);
     }
 
     private Exception decode(String methodKey, Response response, ErrorDecoder fallback) {

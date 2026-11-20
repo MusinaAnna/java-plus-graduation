@@ -76,18 +76,52 @@ services:
       timeout: 3s
       retries: 15
 
-  additional-db:
+  category-db:
     image: postgres:16.1
     environment:
-      POSTGRES_DB: ewm_additional
+      POSTGRES_DB: ewm_category
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5437:5432"
+      - "5440:5432"
     volumes:
-      - additional-db-data:/var/lib/postgresql/data
+      - category-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_additional"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_category"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+
+  compilation-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_compilation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5441:5432"
+    volumes:
+      - compilation-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_compilation"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+
+  comment-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_comment
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5442:5432"
+    volumes:
+      - comment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_comment"]
       interval: 5s
       timeout: 3s
       retries: 15
@@ -155,20 +189,61 @@ services:
       REQUEST_DB_USER: postgres
       REQUEST_DB_PASSWORD: postgres
 
-  additional-service:
-    build: ./core/additional-service
+  category-service:
+    build: ./core/category-service
     depends_on:
       config-server:
         condition: service_healthy
       discovery-server:
         condition: service_healthy
-      additional-db:
+      category-db:
         condition: service_healthy
     environment:
       EUREKA_URI: http://discovery-server:8761/eureka/
-      ADDITIONAL_DB_URL: jdbc:postgresql://additional-db:5432/ewm_additional
-      ADDITIONAL_DB_USER: postgres
-      ADDITIONAL_DB_PASSWORD: postgres
+      CATEGORY_DB_URL: jdbc:postgresql://category-db:5432/ewm_category
+      CATEGORY_DB_USER: postgres
+      CATEGORY_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://category-db:5432/ewm_category
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+
+  compilation-service:
+    build: ./core/compilation-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      compilation-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      COMPILATION_DB_URL: jdbc:postgresql://compilation-db:5432/ewm_compilation
+      COMPILATION_DB_USER: postgres
+      COMPILATION_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://compilation-db:5432/ewm_compilation
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+
+  comment-service:
+    build: ./core/comment-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      comment-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      COMMENT_DB_URL: jdbc:postgresql://comment-db:5432/ewm_comment
+      COMMENT_DB_USER: postgres
+      COMMENT_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/ewm_comment
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
 
   stats-server:
     build: ./statistics-service/statistics-service-server
@@ -192,7 +267,11 @@ services:
         condition: service_started
       request-service:
         condition: service_started
-      additional-service:
+      category-service:
+        condition: service_started
+      compilation-service:
+        condition: service_started
+      comment-service:
         condition: service_started
       stats-server:
         condition: service_started
@@ -207,5 +286,8 @@ volumes:
   user-db-data:
   event-db-data:
   request-db-data:
+  category-db-data:
+  compilation-db-data:
+  comment-db-data:
   additional-db-data:
   stats-db-data:

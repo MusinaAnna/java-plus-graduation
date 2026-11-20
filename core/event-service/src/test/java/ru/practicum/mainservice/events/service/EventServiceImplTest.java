@@ -16,7 +16,7 @@ import ru.practicum.common.enums.EventState;
 import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.dto.ViewStats;
 import ru.practicum.common.exception.NotFoundException;
-import ru.practicum.mainservice.clients.AdditionalServiceClient;
+import ru.practicum.mainservice.clients.CategoryServiceClient;
 import ru.practicum.mainservice.clients.RequestServiceClient;
 import ru.practicum.mainservice.clients.UserServiceClient;
 import ru.practicum.mainservice.events.dto.EventFullDto;
@@ -59,7 +59,7 @@ class EventServiceImplTest {
     private UserServiceClient userServiceClient;
 
     @Mock
-    private AdditionalServiceClient additionalServiceClient;
+    private CategoryServiceClient categoryServiceClient;
 
     @Mock
     private RequestServiceClient requestServiceClient;
@@ -109,7 +109,7 @@ class EventServiceImplTest {
         lenient().when(userServiceClient.getUsers(List.of(user.getId())))
                 .thenReturn(List.of(user));
 
-        lenient().when(additionalServiceClient.getCategories(
+        lenient().when(categoryServiceClient.getCategories(
                         List.of(category.getId())))
                 .thenReturn(List.of(category));
     }
@@ -128,7 +128,7 @@ class EventServiceImplTest {
         request.setRequestModeration(true);
 
         when(userServiceClient.getUser(user.getId())).thenReturn(user);
-        when(additionalServiceClient.getCategory(category.getId()))
+        when(categoryServiceClient.getCategory(category.getId()))
                 .thenReturn(category);
         when(mapper.toEntity(request, category.getId(), user.getId()))
                 .thenReturn(event);
@@ -148,7 +148,7 @@ class EventServiceImplTest {
         assertThat(event.getCategoryId()).isEqualTo(category.getId());
 
         verify(userServiceClient).getUser(user.getId());
-        verify(additionalServiceClient).getCategory(category.getId());
+        verify(categoryServiceClient).getCategory(category.getId());
         verify(repository).save(event);
         verify(userServiceClient).getUsers(List.of(user.getId()));
     }
@@ -165,7 +165,7 @@ class EventServiceImplTest {
                 new ru.practicum.common.dto.LocationDto(55.75f, 37.61f));
 
         when(userServiceClient.getUser(user.getId())).thenReturn(user);
-        when(additionalServiceClient.getCategory(category.getId()))
+        when(categoryServiceClient.getCategory(category.getId()))
                 .thenReturn(null);
 
         assertThatThrownBy(
@@ -216,7 +216,7 @@ class EventServiceImplTest {
                 .isEqualTo(user.getId());
 
         verify(userServiceClient).getUsers(List.of(user.getId()));
-        verify(additionalServiceClient)
+        verify(categoryServiceClient)
                 .getCategories(List.of(category.getId()));
     }
 
@@ -245,6 +245,51 @@ class EventServiceImplTest {
                 false, "VIEWS", 0, 1);
 
         assertThat(result).extracting(EventShortDto::getId).containsExactly(12L);
+    }
+
+    @Test
+    void getPublicEvents_shouldSkipOrphanedHistoricalCategoriesWithoutLosingPagination() {
+        Event orphaned = new Event();
+        orphaned.setId(12L);
+        orphaned.setCategoryId(735L);
+        orphaned.setInitiatorId(user.getId());
+        orphaned.setState(EventState.PUBLISHED);
+        orphaned.setEventDate(event.getEventDate());
+        orphaned.setCreatedOn(event.getCreatedOn());
+        orphaned.setParticipantLimit(0);
+
+        EventShortDto validDto = new EventShortDto();
+        validDto.setId(event.getId());
+        when(repositoryCustom.findPublishedEvents(anyString(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(orphaned)))
+                .thenReturn(new PageImpl<>(List.of(orphaned, event)));
+        when(categoryServiceClient.getCategories(List.of(735L)))
+                .thenReturn(List.of());
+        when(categoryServiceClient.getCategories(List.of(735L, category.getId())))
+                .thenReturn(List.of(category));
+        when(mapper.toShortDto(event)).thenReturn(validDto);
+
+        List<EventShortDto> result = eventService.getPublicEvents(null, null, null,
+                LocalDateTime.now().minusDays(1), LocalDateTime.now().plusYears(10),
+                false, null, 0, 1);
+
+        assertThat(result).extracting(EventShortDto::getId).containsExactly(event.getId());
+        verify(repositoryCustom, times(2)).findPublishedEvents(anyString(), any(), any(),
+                any(), any(), any());
+    }
+
+    @Test
+    void getPublicEvents_shouldNotMaskDownstreamFailureAsOrphan() {
+        when(repositoryCustom.findPublishedEvents(anyString(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(event)));
+        when(categoryServiceClient.getCategories(List.of(category.getId())))
+                .thenThrow(new ru.practicum.common.exception.ServiceUnavailableException(
+                        "category-service unavailable"));
+
+        assertThatThrownBy(() -> eventService.getPublicEvents(null, null, null,
+                LocalDateTime.now().minusDays(1), LocalDateTime.now().plusYears(10),
+                false, null, 0, 10))
+                .isInstanceOf(ru.practicum.common.exception.ServiceUnavailableException.class);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package ru.practicum.mainservice.events.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import ru.practicum.common.exception.ConflictException;
 import ru.practicum.common.exception.NotFoundException;
 import ru.practicum.common.exception.ValidationException;
 import ru.practicum.dto.ViewStats;
-import ru.practicum.mainservice.clients.AdditionalServiceClient;
+import ru.practicum.mainservice.clients.CategoryServiceClient;
 import ru.practicum.mainservice.clients.RequestServiceClient;
 import ru.practicum.mainservice.clients.UserServiceClient;
 import ru.practicum.mainservice.events.dto.EventFullDto;
@@ -45,6 +46,7 @@ import java.util.stream.Collectors;
 
 import static ru.practicum.common.config.JacksonConfig.DATE_TIME_FORMAT;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -53,7 +55,7 @@ public class EventServiceImpl implements EventService {
     private final EventMapper mapper;
     private final StatsClient statsClient;
     private final UserServiceClient userServiceClient;
-    private final AdditionalServiceClient additionalServiceClient;
+    private final CategoryServiceClient categoryServiceClient;
     private final EventRepositoryCustom eventRepositoryCustom;
     private final RequestServiceClient requestServiceClient;
 
@@ -232,6 +234,40 @@ public class EventServiceImpl implements EventService {
 
         List<Event> events = new ArrayList<>(eventRepositoryCustom.findPublishedEvents(
                 text, categories, paid, rangeStart, rangeEnd, pageable).getContent());
+
+        // Separate databases can retain events whose category/user disappeared after a reset.
+        // Never invent related objects, delete events, or return 404 for the whole public page.
+        Map<Long, CategoryDto> knownCategories = loadCategories(events);
+        Map<Long, UserDto> knownUsers = loadUsers(events);
+        boolean missingRelations = false;
+        for (Event event : events) {
+            if (!knownCategories.containsKey(event.getCategoryId())
+                    || !knownUsers.containsKey(event.getInitiatorId())) {
+                missingRelations = true;
+                break;
+            }
+        }
+        if (missingRelations) {
+            // Fill pagination from all valid events, not merely from the first page.
+            if (!loadAll) {
+                events = new ArrayList<>(eventRepositoryCustom.findPublishedEvents(
+                        text, categories, paid, rangeStart, rangeEnd, Pageable.unpaged()).getContent());
+                knownCategories = loadCategories(events);
+                knownUsers = loadUsers(events);
+            }
+            Map<Long, CategoryDto> resolvedCategories = knownCategories;
+            Map<Long, UserDto> resolvedUsers = knownUsers;
+            List<Long> excludedIds = events.stream()
+                    .filter(event -> !resolvedCategories.containsKey(event.getCategoryId())
+                            || !resolvedUsers.containsKey(event.getInitiatorId()))
+                    .map(Event::getId).toList();
+            if (!excludedIds.isEmpty()) {
+                log.warn("Skipping public events with missing category/user references: {}", excludedIds);
+                events.removeIf(event -> !resolvedCategories.containsKey(event.getCategoryId())
+                        || !resolvedUsers.containsKey(event.getInitiatorId()));
+            }
+            loadAll = true;
+        }
         if (!loadAll) {
             events = takePage(events, from, size);
         }
@@ -248,7 +284,7 @@ public class EventServiceImpl implements EventService {
         if (loadAll) {
             events = takePage(events, from, size);
         }
-        return enrichShortEvents(events, confirmedCounts, viewsCounts);
+        return enrichShortEvents(events, confirmedCounts, viewsCounts, knownCategories, knownUsers);
     }
 
     @Override
@@ -316,7 +352,7 @@ public class EventServiceImpl implements EventService {
     }
 
     private CategoryDto getCategory(Long categoryId) {
-        CategoryDto category = additionalServiceClient.getCategory(categoryId);
+        CategoryDto category = categoryServiceClient.getCategory(categoryId);
         if (category == null || category.getId() == null) {
             throw new NotFoundException("Category with id " + categoryId + " was not found");
         }
@@ -345,8 +381,13 @@ public class EventServiceImpl implements EventService {
 
     private List<EventShortDto> enrichShortEvents(List<Event> events, Map<Long, Long> confirmedCounts,
                                                    Map<Long, Long> viewsCounts) {
-        Map<Long, CategoryDto> categories = loadCategories(events);
-        Map<Long, UserDto> users = loadUsers(events);
+        return enrichShortEvents(events, confirmedCounts, viewsCounts,
+                loadCategories(events), loadUsers(events));
+    }
+
+    private List<EventShortDto> enrichShortEvents(List<Event> events, Map<Long, Long> confirmedCounts,
+                                                   Map<Long, Long> viewsCounts,
+                                                   Map<Long, CategoryDto> categories, Map<Long, UserDto> users) {
         return events.stream().map(event -> {
             EventShortDto dto = mapper.toShortDto(event);
             dto.setCategory(requireCategory(categories, event.getCategoryId()));
@@ -362,7 +403,7 @@ public class EventServiceImpl implements EventService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        List<CategoryDto> result = additionalServiceClient.getCategories(ids);
+        List<CategoryDto> result = categoryServiceClient.getCategories(ids);
         return result.stream().collect(Collectors.toMap(CategoryDto::getId, Function.identity()));
     }
 
