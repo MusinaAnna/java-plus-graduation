@@ -14,8 +14,117 @@ services:
     depends_on:
       discovery-server:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O - --header='Accept: application/json'
+          http://discovery-server:8761/eureka/apps/CONFIG-SERVER
+          | grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"'
+      interval: 5s
+      timeout: 5s
+      retries: 25
+      start_period: 15s
     environment:
       EUREKA_URI: http://discovery-server:8761/eureka/
+
+  user-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_users
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - user-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_users"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  event-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_events
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - event-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_events"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  request-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_requests
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    volumes:
+      - request-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_requests"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  category-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_category
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5440:5432"
+    volumes:
+      - category-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_category"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+
+  compilation-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_compilation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5441:5432"
+    volumes:
+      - compilation-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_compilation"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+
+  comment-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_comment
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5442:5432"
+    volumes:
+      - comment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_comment"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   stats-db:
     image: postgres:16.1
@@ -33,27 +142,114 @@ services:
       timeout: 3s
       retries: 15
 
-  ewm-db:
-    image: postgres:16.1
+  user-service:
+    build: ./core/user-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      user-db:
+        condition: service_healthy
     environment:
-      POSTGRES_DB: ewm
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5433:5432"
-    volumes:
-      - ewm-db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      USER_DB_URL: jdbc:postgresql://user-db:5432/ewm_users
+      USER_DB_USER: postgres
+      USER_DB_PASSWORD: postgres
+
+  event-service:
+    build: ./core/event-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      event-db:
+        condition: service_healthy
+      stats-server:
+        condition: service_started
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      EVENT_DB_URL: jdbc:postgresql://event-db:5432/ewm_events
+      EVENT_DB_USER: postgres
+      EVENT_DB_PASSWORD: postgres
+
+  request-service:
+    build: ./core/request-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      request-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      REQUEST_DB_URL: jdbc:postgresql://request-db:5432/ewm_requests
+      REQUEST_DB_USER: postgres
+      REQUEST_DB_PASSWORD: postgres
+
+  category-service:
+    build: ./core/category-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      category-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      CATEGORY_DB_URL: jdbc:postgresql://category-db:5432/ewm_category
+      CATEGORY_DB_USER: postgres
+      CATEGORY_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://category-db:5432/ewm_category
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+
+  compilation-service:
+    build: ./core/compilation-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      compilation-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      COMPILATION_DB_URL: jdbc:postgresql://compilation-db:5432/ewm_compilation
+      COMPILATION_DB_USER: postgres
+      COMPILATION_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://compilation-db:5432/ewm_compilation
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+
+  comment-service:
+    build: ./core/comment-service
+    depends_on:
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+      comment-db:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      COMMENT_DB_URL: jdbc:postgresql://comment-db:5432/ewm_comment
+      COMMENT_DB_USER: postgres
+      COMMENT_DB_PASSWORD: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://comment-db:5432/ewm_comment
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
 
   stats-server:
     build: ./statistics-service/statistics-service-server
     depends_on:
       config-server:
-        condition: service_started
+        condition: service_healthy
       stats-db:
         condition: service_healthy
     environment:
@@ -62,33 +258,36 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
 
-  ewm-service:
-    build: ./core/main-service
-    depends_on:
-      config-server:
-        condition: service_started
-      ewm-db:
-        condition: service_healthy
-      stats-server:
-        condition: service_started
-    environment:
-      EUREKA_URI: http://discovery-server:8761/eureka/
-      SPRING_DATASOURCE_URL: jdbc:postgresql://ewm-db:5432/ewm
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-
   gateway-server:
     build: ./infra/gateway-server
     depends_on:
-      ewm-service:
+      user-service:
+        condition: service_started
+      event-service:
+        condition: service_started
+      request-service:
+        condition: service_started
+      category-service:
+        condition: service_started
+      compilation-service:
+        condition: service_started
+      comment-service:
+        condition: service_started
+      stats-server:
         condition: service_started
       config-server:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
       EUREKA_URI: http://discovery-server:8761/eureka/
 
 volumes:
+  user-db-data:
+  event-db-data:
+  request-db-data:
+  category-db-data:
+  compilation-db-data:
+  comment-db-data:
+  additional-db-data:
   stats-db-data:
-  ewm-db-data:
