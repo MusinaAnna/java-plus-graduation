@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 import ru.practicum.common.dto.EventShortDto;
 import ru.practicum.dto.EndpointHit;
 import ru.practicum.mainservice.controller.api.event.PublicEventControllerApi;
+import ru.practicum.mainservice.events.dto.PublicEventQuery;
 import ru.practicum.mainservice.events.dto.EventFullDto;
 import ru.practicum.mainservice.events.service.EventService;
 import ru.practicum.statistics.client.controller.StatsClient;
@@ -47,8 +48,8 @@ public class PublicEventController implements PublicEventControllerApi {
                         "onlyAvailable={}, sort={}, from={}, size={}",
                 text, categories, paid, rangeStart, rangeEnd, onlyAvailable, sort, from, size);
 
-        List<EventShortDto> events = eventService.getPublicEvents(text, categories, paid, rangeStart, rangeEnd,
-                onlyAvailable, sort, from, size);
+        List<EventShortDto> events = eventService.getPublicEvents(new PublicEventQuery(
+                text, categories, paid, rangeStart, rangeEnd, onlyAvailable, sort, from, size));
         sendHit(request);
         return events;
     }

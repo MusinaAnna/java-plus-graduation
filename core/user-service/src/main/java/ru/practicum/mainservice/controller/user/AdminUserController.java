@@ -5,10 +5,11 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import ru.practicum.common.dto.UserDto;
+import ru.practicum.common.pagination.OffsetPageRequest;
 import ru.practicum.mainservice.controller.api.user.AdminUserControllerApi;
 import ru.practicum.mainservice.users.dto.NewUserRequest;
 import ru.practicum.mainservice.users.service.UserService;
@@ -41,7 +42,7 @@ public class AdminUserController implements AdminUserControllerApi {
 
         return userService.getUsers(
                 ids,
-                PageRequest.of(from / size, size)
+                new OffsetPageRequest(from, size, Sort.unsorted())
         );
     }
 

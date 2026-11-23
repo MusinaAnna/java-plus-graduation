@@ -6,6 +6,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.web.servlet.MockMvc;
 import ru.practicum.common.dto.CategoryDto;
 import ru.practicum.mainservice.categories.service.CategoryService;
@@ -13,7 +14,9 @@ import ru.practicum.mainservice.categories.service.CategoryService;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -57,4 +60,26 @@ public class PublicCategoryControllerTest {
                 .andExpect(jsonPath("$.id").value(1L))
                 .andExpect(jsonPath("$.name").value("Концерты"));
     }
+
+    @Test
+    void getCategories_shouldUseExactUnalignedOffset() throws Exception {
+        when(categoryService.getCategories(any())).thenReturn(List.of());
+
+        mockMvc.perform(get("/categories")
+                        .param("from", "15")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+
+        verify(categoryService).getCategories(argThat((Pageable page) -> page != null
+                && page.getOffset() == 15L && page.getPageSize() == 10));
+    }
+
+    @Test
+    void getCategories_shouldRejectInvalidPagination() throws Exception {
+        mockMvc.perform(get("/categories").param("from", "-1"))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/categories").param("size", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
 }

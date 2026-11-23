@@ -26,6 +26,7 @@ services:
       retries: 25
       start_period: 15s
     environment:
+      EUREKA_INSTANCE_ID: config-server-1
       EUREKA_URI: http://discovery-server:8761/eureka/
 
   user-db:
@@ -152,6 +153,7 @@ services:
       user-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: user-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       USER_DB_URL: jdbc:postgresql://user-db:5432/ewm_users
       USER_DB_USER: postgres
@@ -169,6 +171,7 @@ services:
       stats-server:
         condition: service_started
     environment:
+      EUREKA_INSTANCE_ID: event-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       EVENT_DB_URL: jdbc:postgresql://event-db:5432/ewm_events
       EVENT_DB_USER: postgres
@@ -184,6 +187,7 @@ services:
       request-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: request-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       REQUEST_DB_URL: jdbc:postgresql://request-db:5432/ewm_requests
       REQUEST_DB_USER: postgres
@@ -199,6 +203,7 @@ services:
       category-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: category-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       CATEGORY_DB_URL: jdbc:postgresql://category-db:5432/ewm_category
       CATEGORY_DB_USER: postgres
@@ -218,6 +223,7 @@ services:
       compilation-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: compilation-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       COMPILATION_DB_URL: jdbc:postgresql://compilation-db:5432/ewm_compilation
       COMPILATION_DB_USER: postgres
@@ -237,6 +243,7 @@ services:
       comment-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: comment-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       COMMENT_DB_URL: jdbc:postgresql://comment-db:5432/ewm_comment
       COMMENT_DB_USER: postgres
@@ -253,6 +260,7 @@ services:
       stats-db:
         condition: service_healthy
     environment:
+      EUREKA_INSTANCE_ID: stats-server-1
       EUREKA_URI: http://discovery-server:8761/eureka/
       SPRING_DATASOURCE_URL: jdbc:postgresql://stats-db:5432/ewm-stats
       SPRING_DATASOURCE_USERNAME: postgres
@@ -280,6 +288,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      EUREKA_INSTANCE_ID: gateway-server-1
       EUREKA_URI: http://discovery-server:8761/eureka/
 
 volumes:

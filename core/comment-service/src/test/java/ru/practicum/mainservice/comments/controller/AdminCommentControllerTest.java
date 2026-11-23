@@ -48,6 +48,9 @@ public class AdminCommentControllerTest {
                 .andExpect(jsonPath("$[0].id").value(1L))
                 .andExpect(jsonPath("$[0].text").value("Admin test comment"))
                 .andExpect(jsonPath("$[0].eventId").value(eventId))
+                .andExpect(jsonPath("$[0].event").value(eventId))
+                .andExpect(jsonPath("$[0].created").isNotEmpty())
+                .andExpect(jsonPath("$[0].createdAt").isNotEmpty())
                 .andExpect(jsonPath("$[0].author.id").value(userId));
     }
 
@@ -70,7 +73,10 @@ public class AdminCommentControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(1L))
                 .andExpect(jsonPath("$[0].text").value("Admin test comment"))
-                .andExpect(jsonPath("$[0].eventId").value(eventId));
+                .andExpect(jsonPath("$[0].eventId").value(eventId))
+                .andExpect(jsonPath("$[0].event").value(eventId))
+                .andExpect(jsonPath("$[0].created").isNotEmpty())
+                .andExpect(jsonPath("$[0].createdAt").isNotEmpty());
     }
 
     @Test

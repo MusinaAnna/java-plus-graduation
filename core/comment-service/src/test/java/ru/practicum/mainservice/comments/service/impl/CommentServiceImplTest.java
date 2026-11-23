@@ -7,7 +7,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import ru.practicum.common.dto.CommentDto;
 import ru.practicum.common.dto.EventInternalDto;
 import ru.practicum.common.dto.NewCommentDto;
@@ -40,7 +40,6 @@ class CommentServiceImplTest {
     private static final long COMMENT_ID = 100L;
 
     @Mock
-
     private CommentRepository commentRepository;
     @Mock
     private CommentMapper commentMapper;
@@ -111,7 +110,7 @@ class CommentServiceImplTest {
     @Test
     void getEventComments_shouldBatchLoadAuthors() {
         when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
-        when(commentRepository.findByEventIdAndDeletedFalse(eq(EVENT_ID), any(PageRequest.class)))
+        when(commentRepository.findByEventIdAndDeletedFalse(eq(EVENT_ID), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(comment)));
         when(userServiceClient.getUsers(List.of(USER_ID))).thenReturn(List.of(author));
         when(commentMapper.toDto(comment)).thenReturn(commentDto);
@@ -123,12 +122,145 @@ class CommentServiceImplTest {
     }
 
     @Test
+    void updateComment_shouldLoadAuthorOnlyOnce() {
+        when(userServiceClient.getUser(USER_ID)).thenReturn(author);
+        when(commentRepository.findById(COMMENT_ID)).thenReturn(Optional.of(comment));
+        when(commentRepository.save(comment)).thenReturn(comment);
+        when(commentMapper.toDto(comment)).thenReturn(commentDto);
+        commentService.updateComment(USER_ID, COMMENT_ID,
+                ru.practicum.common.dto.UpdateCommentDto.builder().text("Отредактировано").build());
+        verify(userServiceClient, times(1)).getUser(USER_ID);
+    }
+
+    @Test
+    void getEventComments_shouldSortByTextAndAuthorId() {
+        when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
+        when(commentRepository.findByEventIdAndDeletedFalse(eq(EVENT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        commentService.getEventComments(EVENT_ID, 0, 10, "text");
+        commentService.getEventComments(EVENT_ID, 0, 10, "author.id");
+        org.mockito.ArgumentCaptor<Pageable> pageCaptor =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(commentRepository, times(2))
+                .findByEventIdAndDeletedFalse(eq(EVENT_ID), pageCaptor.capture());
+        assertThat(pageCaptor.getAllValues().get(0).getSort().getOrderFor("text")).isNotNull();
+        assertThat(pageCaptor.getAllValues().get(1).getSort().getOrderFor("authorId")).isNotNull();
+    }
+
+    @Test
+    void getEventComments_shouldHonorExactNonAlignedOffset() {
+        when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
+        when(commentRepository.findByEventIdAndDeletedFalse(eq(EVENT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        commentService.getEventComments(EVENT_ID, 15, 10, "-createdAt");
+
+        org.mockito.ArgumentCaptor<Pageable> pageable =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(commentRepository).findByEventIdAndDeletedFalse(eq(EVENT_ID), pageable.capture());
+        assertThat(pageable.getValue().getOffset()).isEqualTo(15L);
+        assertThat(pageable.getValue().getPageSize()).isEqualTo(10);
+        assertThat(pageable.getValue().getSort().getOrderFor("createdAt").getDirection())
+                .isEqualTo(org.springframework.data.domain.Sort.Direction.DESC);
+        assertThat(pageable.getValue().getSort().getOrderFor("id")).isNotNull();
+    }
+
+    @Test
+    void getUserCommentsByAdmin_shouldHonorExactNonAlignedOffset() {
+        when(userServiceClient.getUser(USER_ID)).thenReturn(author);
+        when(commentRepository.findAllByAuthorId(eq(USER_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        commentService.getUserCommentsByAdmin(USER_ID, 13, 10, "id");
+
+        org.mockito.ArgumentCaptor<Pageable> pageable =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(commentRepository).findAllByAuthorId(eq(USER_ID), pageable.capture());
+        assertThat(pageable.getValue().getOffset()).isEqualTo(13L);
+    }
+
+    @Test
+    void getEventCommentsByAdmin_shouldHonorExactNonAlignedOffset() {
+        when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
+        when(commentRepository.findAllByEventId(eq(EVENT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        commentService.getEventCommentsByAdmin(EVENT_ID, 21, 10, "updatedAt");
+
+        org.mockito.ArgumentCaptor<Pageable> pageable =
+                org.mockito.ArgumentCaptor.forClass(Pageable.class);
+        verify(commentRepository).findAllByEventId(eq(EVENT_ID), pageable.capture());
+        assertThat(pageable.getValue().getOffset()).isEqualTo(21L);
+    }
+
+    @Test
+    void getEventComments_shouldRejectUnrecognizedSortField() {
+        when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
+        assertThatThrownBy(() -> commentService.getEventComments(EVENT_ID, 0, 10, "nonExisting"))
+                .isInstanceOf(ru.practicum.common.exception.BadRequestException.class);
+        verify(commentRepository, never())
+                .findByEventIdAndDeletedFalse(any(), any());
+    }
+
+    @Test
+    void deleteCommentByUser_shouldReportBothMissingResources() {
+        when(userServiceClient.getUser(999L)).thenThrow(new NotFoundException("Downstream request failed"));
+        when(commentRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.deleteCommentByUser(999L, 999L))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("Comment not found")
+                .hasMessageContaining("Пользователь с id=999 не найден");
+        verify(commentRepository).findById(999L);
+    }
+
+    @Test
+    void deleteCommentByUser_shouldReportMissingUserForExistingComment() {
+        when(userServiceClient.getUser(999L)).thenThrow(new NotFoundException("Downstream request failed"));
+        when(commentRepository.findById(COMMENT_ID)).thenReturn(Optional.of(comment));
+
+        assertThatThrownBy(() -> commentService.deleteCommentByUser(999L, COMMENT_ID))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("Пользователь с id=999 не найден");
+        verify(commentRepository, never()).save(any());
+    }
+
+    @Test
+    void deleteCommentByUser_shouldReturnComment404ForExistingUser() {
+        when(userServiceClient.getUser(USER_ID)).thenReturn(author);
+        when(commentRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.deleteCommentByUser(USER_ID, 999L))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("Comment not found: Комментарий с id=999 не найден");
+    }
+
+    @Test
+    void deleteCommentByAdmin_shouldReturnLocalizedNotFoundMessage() {
+        when(commentRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> commentService.deleteCommentByAdmin(999L))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("Comment not found: Комментарий с id=999 не найден");
+    }
+
+    @Test
+    void getEventCommentsByAdmin_shouldAllowExistingEventWithoutComments() {
+        when(eventServiceClient.getEvent(EVENT_ID)).thenReturn(publishedEvent);
+        when(commentRepository.findAllByEventId(eq(EVENT_ID), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(commentService.getEventCommentsByAdmin(EVENT_ID, 0, 10, null)).isEmpty();
+        verify(eventServiceClient).getEvent(EVENT_ID);
+    }
+
+    @Test
     void getUserCommentsByAdmin_shouldPreserveMissingUserMessage() {
         when(userServiceClient.getUser(999L)).thenThrow(new NotFoundException("Downstream request failed"));
 
         assertThatThrownBy(() -> commentService.getUserCommentsByAdmin(999L, 0, 10, null))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Пользователь с id=999 не найден");
+                .hasMessage("User not found: Пользователь с id=999 не найден");
     }
 
     @Test
@@ -137,7 +269,7 @@ class CommentServiceImplTest {
 
         assertThatThrownBy(() -> commentService.getEventCommentsByAdmin(999L, 0, 10, null))
                 .isInstanceOf(NotFoundException.class)
-                .hasMessage("Событие с id=999 не найдено");
+                .hasMessage("Event not found: Событие с id=999 не найдено");
     }
 
     @Test

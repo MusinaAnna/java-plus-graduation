@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.mockito.ArgumentCaptor;
 import ru.practicum.common.dto.EventShortDto;
 import ru.practicum.dto.EndpointHit;
+import ru.practicum.mainservice.events.dto.PublicEventQuery;
 import ru.practicum.mainservice.events.service.EventService;
 import ru.practicum.statistics.client.controller.StatsClient;
 
@@ -40,10 +41,8 @@ public class PublicEventControllerTest {
     void getEvents_shouldReturnListOfEvents() throws Exception {
         List<EventShortDto> events = List.of(createEventShortDto());
 
-        when(eventService.getPublicEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(false), isNull(), eq(0), eq(10)
-        )).thenReturn(events);
+        when(eventService.getPublicEvents(eq(new PublicEventQuery(
+                null, null, null, null, null, false, null, 0, 10)))).thenReturn(events);
 
         mockMvc.perform(get("/events").with(request -> {
                     request.setRemoteAddr("192.0.2.25");
@@ -60,10 +59,8 @@ public class PublicEventControllerTest {
 
     @Test
     void getEvents_shouldUseFirstForwardedAddressWhenBehindGateway() throws Exception {
-        when(eventService.getPublicEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(),
-                eq(false), isNull(), eq(0), eq(10)
-        )).thenReturn(List.of());
+        when(eventService.getPublicEvents(eq(new PublicEventQuery(
+                null, null, null, null, null, false, null, 0, 10)))).thenReturn(List.of());
 
         mockMvc.perform(get("/events")
                         .header("X-Forwarded-For", "198.51.100.12, 192.0.2.25")
@@ -82,10 +79,8 @@ public class PublicEventControllerTest {
     void getEvents_withFilters_shouldReturnFilteredEvents() throws Exception {
         List<EventShortDto> events = List.of(createEventShortDto());
 
-        when(eventService.getPublicEvents(
-                eq("test"), eq(List.of(1L)), eq(true), any(), any(),
-                eq(false), eq("EVENT_DATE"), eq(0), eq(10)
-        )).thenReturn(events);
+        when(eventService.getPublicEvents(eq(new PublicEventQuery(
+                "test", List.of(1L), true, null, null, false, "EVENT_DATE", 0, 10)))).thenReturn(events);
 
         mockMvc.perform(get("/events")
                         .param("text", "test")

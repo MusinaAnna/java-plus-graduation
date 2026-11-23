@@ -6,7 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
@@ -54,8 +54,8 @@ class AdminUserControllerTest {
         secondUser.setEmail("petr@example.com");
 
         when(userService.getUsers(
-                null,
-                PageRequest.of(0, 10)
+                eq(null),
+                pageAt(0, 10)
         )).thenReturn(List.of(firstUser, secondUser));
 
         mockMvc.perform(get("/admin/users"))
@@ -70,8 +70,8 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$[1].id").value(2L));
 
         verify(userService).getUsers(
-                null,
-                PageRequest.of(0, 10)
+                eq(null),
+                pageAt(0, 10)
         );
     }
 
@@ -83,8 +83,8 @@ class AdminUserControllerTest {
         user.setEmail("petr@example.com");
 
         when(userService.getUsers(
-                List.of(1L, 2L),
-                PageRequest.of(2, 5)
+                eq(List.of(1L, 2L)),
+                pageAt(10, 5)
         )).thenReturn(List.of(user));
 
         mockMvc.perform(get("/admin/users")
@@ -96,8 +96,8 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$[0].id").value(2L));
 
         verify(userService).getUsers(
-                List.of(1L, 2L),
-                PageRequest.of(2, 5)
+                eq(List.of(1L, 2L)),
+                pageAt(10, 5)
         );
     }
 
@@ -205,4 +205,23 @@ class AdminUserControllerTest {
         mockMvc.perform(delete("/admin/users/text"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void getUsers_shouldUseExactUnalignedOffset() throws Exception {
+        when(userService.getUsers(eq(null), pageAt(15, 10)))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/admin/users")
+                        .param("from", "15")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+
+        verify(userService).getUsers(eq(null), pageAt(15, 10));
+    }
+
+    private static Pageable pageAt(long offset, int size) {
+        return argThat((Pageable page) -> page != null
+                && page.getOffset() == offset && page.getPageSize() == size);
+    }
+
 }

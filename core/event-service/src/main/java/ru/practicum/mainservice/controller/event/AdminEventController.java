@@ -7,6 +7,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 import ru.practicum.common.enums.EventState;
 import ru.practicum.mainservice.controller.api.event.AdminEventControllerApi;
+import ru.practicum.mainservice.events.dto.AdminEventQuery;
 import ru.practicum.mainservice.events.dto.EventFullDto;
 import ru.practicum.mainservice.events.dto.UpdateEventAdminRequest;
 import ru.practicum.mainservice.events.service.EventService;
@@ -37,7 +38,7 @@ public class AdminEventController implements AdminEventControllerApi {
     ) {
         log.info("GET /admin/events with params: users={}, states={}, categories={}, rangeStart={}, rangeEnd={}, from={}, size={}",
                 users, states, categories, rangeStart, rangeEnd, from, size);
-        return service.getAdminEvents(users, states, categories, rangeStart, rangeEnd, from, size);
+        return service.getAdminEvents(new AdminEventQuery(users, states, categories, rangeStart, rangeEnd, from, size));
     }
 
     @Override

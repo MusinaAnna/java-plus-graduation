@@ -10,15 +10,12 @@ import ru.practicum.common.dto.NewCommentDto;
 import ru.practicum.common.dto.UpdateCommentDto;
 import ru.practicum.mainservice.comments.entity.Comment;
 
-import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface CommentMapper {
     @Mapping(target = "isDeleted", source = "deleted")
     @Mapping(target = "author", ignore = true)
     CommentDto toDto(Comment comment);
-
-    List<CommentDto> toDtoList(List<Comment> comments);
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "eventId", source = "eventId")

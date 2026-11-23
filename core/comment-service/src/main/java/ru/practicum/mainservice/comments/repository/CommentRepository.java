@@ -30,23 +30,6 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     Optional<Comment> findByIdAndDeletedFalse(Long commentId);
 
     /**
-     * Проверка существования неудалённого комментария по идентификатору.
-     *
-     * @param commentId идентификатор комментария
-     * @return true, если неудалённый комментарий с таким id существует
-     */
-    boolean existsByIdAndDeletedFalse(Long commentId);
-
-    /**
-     * Проверка существования неудалённого комментария у автора.
-     *
-     * @param commentId идентификатор комментария
-     * @param authorId  идентификатор автора
-     * @return true, если комментарий принадлежит автору и не удалён
-     */
-    boolean existsByIdAndAuthorIdAndDeletedFalse(Long commentId, Long authorId);
-
-    /**
      * Получение всех комментариев пользователя, включая удалённые.
      *
      * @param authorId идентификатор автора
@@ -64,18 +47,4 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
      */
     Page<Comment> findAllByEventId(Long eventId, Pageable pageable);
 
-    /**
-     * Удаление всех комментариев автора (например, при удалении пользователя).
-     *
-     * @param authorId идентификатор автора
-     */
-    void deleteAllByAuthorId(Long authorId);
-
-    /**
-     * Получение количества неудалённых комментариев события.
-     *
-     * @param eventId идентификатор события
-     * @return количество неудалённых комментариев
-     */
-    long countByEventIdAndDeletedFalse(Long eventId);
 }

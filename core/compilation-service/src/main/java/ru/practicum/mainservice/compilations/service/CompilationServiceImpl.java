@@ -3,7 +3,6 @@ package ru.practicum.mainservice.compilations.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,25 +94,8 @@ public class CompilationServiceImpl implements CompilationService {
 
     @Override
     public List<CompilationDto> getCompilations(Boolean pinned, Pageable pageable) {
-        Page<Long> idPage = compilationRepository.findCompilationIds(pinned, pageable);
-        List<Long> ids = idPage.getContent();
-
-        if (ids.isEmpty()) {
-            return List.of();
-        }
-
-        Map<Long, Compilation> byId = compilationRepository.findAllById(ids).stream()
-                .collect(Collectors.toMap(
-                        Compilation::getId,
-                        Function.identity()
-                ));
-
-        List<Compilation> compilations = ids.stream()
-                .map(byId::get)
-                .filter(java.util.Objects::nonNull)
-                .toList();
-
-        return toDtos(compilations);
+        // Page actual compilations in SQL; Hibernate batches lazy eventIds collections.
+        return toDtos(compilationRepository.findAllByPinned(pinned, pageable).getContent());
     }
 
     @Override

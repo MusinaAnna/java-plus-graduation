@@ -16,6 +16,7 @@ import ru.practicum.common.dto.UserShortDto;
 import ru.practicum.common.entity.Location;
 import ru.practicum.common.enums.AdminStateAction;
 import ru.practicum.common.enums.EventState;
+import ru.practicum.mainservice.events.dto.AdminEventQuery;
 import ru.practicum.mainservice.events.dto.EventFullDto;
 import ru.practicum.mainservice.events.dto.UpdateEventAdminRequest;
 import ru.practicum.mainservice.events.service.EventService;
@@ -99,9 +100,8 @@ public class AdminEventControllerTest {
     void getEvents_shouldReturnListOfEvents() throws Exception {
         List<EventFullDto> events = List.of(eventFullDto);
 
-        when(eventService.getAdminEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(), anyInt(), anyInt()
-        )).thenReturn(events);
+        when(eventService.getAdminEvents(eq(new AdminEventQuery(
+                null, null, null, null, null, 0, 10)))).thenReturn(events);
 
         mvc.perform(get("/admin/events")
                         .param("from", "0")
@@ -118,9 +118,7 @@ public class AdminEventControllerTest {
     void getEvents_withAllFilters_shouldReturnFilteredEvents() throws Exception {
         List<EventFullDto> events = List.of(eventFullDto);
 
-        when(eventService.getAdminEvents(
-                anyList(), anyList(), anyList(), any(), any(), anyInt(), anyInt()
-        )).thenReturn(events);
+        when(eventService.getAdminEvents(any(AdminEventQuery.class))).thenReturn(events);
 
         mvc.perform(get("/admin/events")
                         .param("users", "1", "2")
@@ -139,9 +137,8 @@ public class AdminEventControllerTest {
     void getEvents_withDefaultPagination_shouldReturnEvents() throws Exception {
         List<EventFullDto> events = List.of(eventFullDto);
 
-        when(eventService.getAdminEvents(
-                isNull(), isNull(), isNull(), isNull(), isNull(), eq(0), eq(10)
-        )).thenReturn(events);
+        when(eventService.getAdminEvents(eq(new AdminEventQuery(
+                null, null, null, null, null, 0, 10)))).thenReturn(events);
 
         mvc.perform(get("/admin/events")
                         .contentType(MediaType.APPLICATION_JSON))

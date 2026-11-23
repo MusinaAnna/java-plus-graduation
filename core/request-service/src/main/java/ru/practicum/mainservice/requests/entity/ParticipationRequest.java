@@ -10,7 +10,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.NoArgsConstructor;
 import ru.practicum.common.enums.RequestStatus;
 
@@ -20,7 +21,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "participation_requests", uniqueConstraints =
         @UniqueConstraint(name = "uq_event_requester", columnNames = {"event_id", "requester_id"}))
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class ParticipationRequest {

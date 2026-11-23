@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import ru.practicum.mainservice.compilations.entity.Compilation;
 
 public interface CompilationRepository extends JpaRepository<Compilation, Long> {
-    @Query("SELECT c.id FROM Compilation c WHERE (:pinned IS NULL OR c.pinned = :pinned) ORDER BY c.id")
-    Page<Long> findCompilationIds(@Param("pinned") Boolean pinned, Pageable pageable);
+    @Query(value = "SELECT c FROM Compilation c WHERE (:pinned IS NULL OR c.pinned = :pinned) ORDER BY c.id",
+            countQuery = "SELECT count(c) FROM Compilation c WHERE (:pinned IS NULL OR c.pinned = :pinned)")
+    Page<Compilation> findAllByPinned(@Param("pinned") Boolean pinned, Pageable pageable);
 }

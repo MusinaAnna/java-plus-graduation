@@ -100,12 +100,14 @@ public interface CommentService {
      * Доступно всем пользователям без авторизации.
      * Возвращает только комментарии с isDeleted = false.
      *
-     * <p>Сортировка возможна по любому полю комментария (по умолчанию - createdAt).
+     * <p>Поддерживаются поля id, text, eventId, authorId (или author.id),
+     * createdAt, updatedAt и deleted (или isDeleted).
+     * По умолчанию сортировка по createdAt; префикс "-" задаёт сортировку по убыванию.
      *
      * @param eventId идентификатор события
      * @param from    начальная позиция для пагинации (0-based)
      * @param size    количество записей на странице
-     * @param sort    поле для сортировки (например, "createdAt", "text", "author.id")
+     * @param sort    поддерживаемое поле сортировки (например, "createdAt", "text", "author.id")
      * @return список комментариев события (только активные)
      * @throws NotFoundException если событие не найдено или не опубликовано
      */

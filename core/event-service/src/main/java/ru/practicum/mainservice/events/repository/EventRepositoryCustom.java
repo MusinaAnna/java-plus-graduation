@@ -75,7 +75,7 @@ public class EventRepositoryCustom {
             query.where(predicates.toArray(new Predicate[0]));
         }
 
-        query.orderBy(cb.asc(root.get("eventDate")));
+        query.orderBy(cb.asc(root.get("eventDate")), cb.asc(root.get("id")));
 
         TypedQuery<Event> typedQuery = entityManager.createQuery(query);
         if (pageable.isPaged()) {
@@ -86,10 +86,6 @@ public class EventRepositoryCustom {
         List<Event> events = typedQuery.getResultList();
 
         log.info("EventRepositoryCustom: total={}, returned={}", total, events.size());
-        if (!events.isEmpty()) {
-            List<Long> ids = events.stream().map(Event::getId).toList();
-            log.info("IDs: {}", ids);
-        }
 
         return new PageImpl<>(events, pageable, total);
     }
@@ -198,7 +194,7 @@ public class EventRepositoryCustom {
             query.where(predicates.toArray(new Predicate[0]));
         }
 
-        query.orderBy(cb.desc(root.get("createdOn")));
+        query.orderBy(cb.desc(root.get("createdOn")), cb.desc(root.get("id")));
 
         TypedQuery<Event> typedQuery = entityManager.createQuery(query);
         if (pageable.isPaged()) {

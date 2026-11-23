@@ -199,6 +199,17 @@ class CompilationServiceImplTest {
     }
 
     @Test
+    void getCompilations_shouldLoadPageOfCompilationsDirectly() {
+        org.springframework.data.domain.Pageable page = org.springframework.data.domain.PageRequest.of(1, 10);
+        when(compilationRepository.findAllByPinned(true, page))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(compilation)));
+        when(compilationMapper.toDto(compilation, List.of())).thenReturn(compilationDto);
+
+        assertThat(compilationService.getCompilations(true, page)).containsExactly(compilationDto);
+        verify(compilationRepository, never()).findAllById(any(Iterable.class));
+    }
+
+    @Test
     void getCompilation_shouldThrowWhenMissing() {
         when(compilationRepository.findById(99L))
                 .thenReturn(Optional.empty());

@@ -5,7 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import ru.practicum.common.dto.CompilationDto;
@@ -14,6 +14,7 @@ import ru.practicum.mainservice.compilations.service.CompilationService;
 import java.util.LinkedHashSet;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,7 +51,7 @@ class PublicCompilationControllerTest {
 
         when(compilationService.getCompilations(
                 eq(null),
-                eq(PageRequest.of(0, 10))
+                pageAt(0, 10)
         )).thenReturn(List.of(first, second));
 
         mockMvc.perform(get("/compilations"))
@@ -63,8 +64,8 @@ class PublicCompilationControllerTest {
                 .andExpect(jsonPath("$[1].id").value(2L));
 
         verify(compilationService).getCompilations(
-                null,
-                PageRequest.of(0, 10)
+                eq(null),
+                pageAt(0, 10)
         );
     }
 
@@ -78,8 +79,8 @@ class PublicCompilationControllerTest {
         );
 
         when(compilationService.getCompilations(
-                true,
-                PageRequest.of(0, 10)
+                eq(true),
+                pageAt(0, 10)
         )).thenReturn(List.of(compilation));
 
         mockMvc.perform(get("/compilations")
@@ -89,17 +90,17 @@ class PublicCompilationControllerTest {
                 .andExpect(jsonPath("$[0].pinned").value(true));
 
         verify(compilationService).getCompilations(
-                true,
-                PageRequest.of(0, 10)
+                eq(true),
+                pageAt(0, 10)
         );
     }
 
     @Test
-    void getCompilations_shouldCalculatePageFromOffset()
+    void getCompilations_shouldUseRequestedOffset()
             throws Exception {
         when(compilationService.getCompilations(
-                false,
-                PageRequest.of(2, 5)
+                eq(false),
+                pageAt(10, 5)
         )).thenReturn(List.of());
 
         mockMvc.perform(get("/compilations")
@@ -110,8 +111,8 @@ class PublicCompilationControllerTest {
                 .andExpect(jsonPath("$").isEmpty());
 
         verify(compilationService).getCompilations(
-                false,
-                PageRequest.of(2, 5)
+                eq(false),
+                pageAt(10, 5)
         );
     }
 
@@ -150,4 +151,23 @@ class PublicCompilationControllerTest {
         mockMvc.perform(get("/compilations/text"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void getCompilations_shouldUseExactUnalignedOffset() throws Exception {
+        when(compilationService.getCompilations(eq(null), pageAt(15, 10)))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get("/compilations")
+                        .param("from", "15")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+
+        verify(compilationService).getCompilations(eq(null), pageAt(15, 10));
+    }
+
+    private static Pageable pageAt(long offset, int size) {
+        return argThat((Pageable page) -> page != null
+                && page.getOffset() == offset && page.getPageSize() == size);
+    }
+
 }

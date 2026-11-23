@@ -19,6 +19,7 @@ import ru.practicum.common.exception.NotFoundException;
 import ru.practicum.mainservice.clients.CategoryServiceClient;
 import ru.practicum.mainservice.clients.RequestServiceClient;
 import ru.practicum.mainservice.clients.UserServiceClient;
+import ru.practicum.mainservice.events.dto.PublicEventQuery;
 import ru.practicum.mainservice.events.dto.EventFullDto;
 import ru.practicum.mainservice.events.dto.NewEventDto;
 import ru.practicum.mainservice.events.entity.Event;
@@ -240,9 +241,9 @@ class EventServiceImplTest {
                         new ViewStats("ewm-main-service", "/events/12", 8L)));
         when(mapper.toShortDto(second)).thenReturn(shortDto);
 
-        List<EventShortDto> result = eventService.getPublicEvents(null, null, null,
+        List<EventShortDto> result = eventService.getPublicEvents(new PublicEventQuery(null, null, null,
                 LocalDateTime.now().minusDays(1), LocalDateTime.now().plusYears(10),
-                false, "VIEWS", 0, 1);
+                false, "VIEWS", 0, 1));
 
         assertThat(result).extracting(EventShortDto::getId).containsExactly(12L);
     }
@@ -269,9 +270,9 @@ class EventServiceImplTest {
                 .thenReturn(List.of(category));
         when(mapper.toShortDto(event)).thenReturn(validDto);
 
-        List<EventShortDto> result = eventService.getPublicEvents(null, null, null,
+        List<EventShortDto> result = eventService.getPublicEvents(new PublicEventQuery(null, null, null,
                 LocalDateTime.now().minusDays(1), LocalDateTime.now().plusYears(10),
-                false, null, 0, 1);
+                false, null, 0, 1));
 
         assertThat(result).extracting(EventShortDto::getId).containsExactly(event.getId());
         verify(repositoryCustom, times(2)).findPublishedEvents(anyString(), any(), any(),
@@ -286,16 +287,16 @@ class EventServiceImplTest {
                 .thenThrow(new ru.practicum.common.exception.ServiceUnavailableException(
                         "category-service unavailable"));
 
-        assertThatThrownBy(() -> eventService.getPublicEvents(null, null, null,
+        assertThatThrownBy(() -> eventService.getPublicEvents(new PublicEventQuery(null, null, null,
                 LocalDateTime.now().minusDays(1), LocalDateTime.now().plusYears(10),
-                false, null, 0, 10))
+                false, null, 0, 10)))
                 .isInstanceOf(ru.practicum.common.exception.ServiceUnavailableException.class);
     }
 
     @Test
     void getPublicEvents_shouldRejectZeroPageSize() {
-        assertThatThrownBy(() -> eventService.getPublicEvents(null, null, null,
-                null, null, false, null, 0, 0))
+        assertThatThrownBy(() -> eventService.getPublicEvents(new PublicEventQuery(null, null, null,
+                null, null, false, null, 0, 0)))
                 .isInstanceOf(BadRequestException.class);
     }
 

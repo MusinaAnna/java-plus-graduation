@@ -1,5 +1,7 @@
 package ru.practicum.mainservice.controller.api.category;
 
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,8 +24,8 @@ public interface PublicCategoryControllerApi {
      */
     @GetMapping
     List<CategoryDto> getCategories(
-            @RequestParam(defaultValue = "0") int from,
-            @RequestParam(defaultValue = "10") int size);
+            @RequestParam(defaultValue = "0") @PositiveOrZero int from,
+            @RequestParam(defaultValue = "10") @Positive int size);
 
     /**
      * Получение категории по идентификатору.

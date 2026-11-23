@@ -1,7 +1,6 @@
 package ru.practicum.mainservice.comments.service.impl;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -13,7 +12,7 @@ import ru.practicum.common.dto.UpdateCommentDto;
 import ru.practicum.common.dto.UserDto;
 import ru.practicum.common.dto.UserShortDto;
 import ru.practicum.common.enums.EventState;
-import ru.practicum.common.enums.SortType;
+import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.common.exception.ConflictException;
 import ru.practicum.common.exception.ForbiddenException;
 import ru.practicum.common.exception.NotFoundException;
@@ -23,6 +22,7 @@ import ru.practicum.mainservice.comments.entity.Comment;
 import ru.practicum.mainservice.comments.mapper.CommentMapper;
 import ru.practicum.mainservice.comments.repository.CommentRepository;
 import ru.practicum.mainservice.comments.service.CommentService;
+import ru.practicum.common.pagination.OffsetPageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -54,7 +54,7 @@ public class CommentServiceImpl implements CommentService {
     @Override
     @Transactional
     public CommentDto updateComment(Long userId, Long commentId, UpdateCommentDto dto) {
-        getUser(userId);
+        UserDto author = getUser(userId);
         Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new NotFoundException("Комментарий с id=" + commentId + " не найден"));
         if (!comment.getAuthorId().equals(userId)) {
@@ -65,15 +65,24 @@ public class CommentServiceImpl implements CommentService {
         }
         commentMapper.update(dto, comment);
         comment.setUpdatedAt(LocalDateTime.now());
-        return enrichComment(commentRepository.save(comment), getUser(userId));
+        return enrichComment(commentRepository.save(comment), author);
     }
 
     @Override
     @Transactional
     public void deleteCommentByUser(Long userId, Long commentId) {
-        getUser(userId);
+        // Report both missing resources rather than obscuring either cause.
+        try {
+            getUser(userId);
+        } catch (NotFoundException missingUser) {
+            if (commentRepository.findById(commentId).isEmpty()) {
+                throw new NotFoundException("Comment not found: Комментарий с id=" + commentId
+                        + " не найден; " + missingUser.getMessage());
+            }
+            throw missingUser;
+        }
         Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new NotFoundException("Комментарий с id=" + commentId + " не найден"));
+                .orElseThrow(() -> commentNotFound(commentId));
         if (!comment.getAuthorId().equals(userId)) {
             throw new ForbiddenException("Пользователь с id=" + userId + " не является автором комментария с id=" + commentId);
         }
@@ -88,7 +97,7 @@ public class CommentServiceImpl implements CommentService {
     public List<CommentDto> getEventComments(Long eventId, int from, int size, String sort) {
         EventInternalDto event = getEvent(eventId);
         if (event.getState() != EventState.PUBLISHED) {
-            throw new NotFoundException("Опубликованное событие с id=" + eventId + " не найдено");
+            throw new NotFoundException("Событие с id=" + eventId + " не найдено");
         }
         Pageable pageable = createPageable(from, size, sort);
         return enrichComments(commentRepository.findByEventIdAndDeletedFalse(eventId, pageable).getContent());
@@ -99,18 +108,22 @@ public class CommentServiceImpl implements CommentService {
         Comment comment = commentRepository.findByIdAndDeletedFalse(commentId)
                 .orElseThrow(() -> new NotFoundException("Комментарий с id=" + commentId + " не найден"));
         if (!comment.getEventId().equals(eventId)) {
-            throw new NotFoundException("Комментарий с id=" + commentId + " не найден для события " + eventId);
+            throw new NotFoundException("Комментарий с id=" + commentId + " не найден");
         }
         EventInternalDto event = getEvent(eventId);
         if (event.getState() != EventState.PUBLISHED) {
-            throw new NotFoundException("Опубликованное событие с id=" + eventId + " не найдено");
+            throw new NotFoundException("Событие с id=" + eventId + " не найдено");
         }
         return enrichComment(comment, getUser(comment.getAuthorId()));
     }
 
     @Override
     public List<CommentDto> getUserCommentsByAdmin(Long userId, int from, int size, String sort) {
-        getUser(userId);
+        try {
+            getUser(userId);
+        } catch (NotFoundException missingUser) {
+            throw new NotFoundException("User not found: " + missingUser.getMessage());
+        }
         Pageable pageable = createPageable(from, size, sort);
         return enrichComments(commentRepository.findAllByAuthorId(userId, pageable).getContent());
     }
@@ -119,22 +132,46 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public void deleteCommentByAdmin(Long commentId) {
         Comment comment = commentRepository.findById(commentId)
-                .orElseThrow(() -> new NotFoundException("Комментарий с id=" + commentId + " не найден"));
+                .orElseThrow(() -> commentNotFound(commentId));
         commentRepository.delete(comment);
     }
 
     @Override
     public List<CommentDto> getEventCommentsByAdmin(Long eventId, int from, int size, String sort) {
-        getEvent(eventId);
+        try {
+            getEvent(eventId);
+        } catch (NotFoundException missingEvent) {
+            throw new NotFoundException("Event not found: " + missingEvent.getMessage());
+        }
         Pageable pageable = createPageable(from, size, sort);
         return enrichComments(commentRepository.findAllByEventId(eventId, pageable).getContent());
     }
 
+    private NotFoundException commentNotFound(Long commentId) {
+        return new NotFoundException("Comment not found: Комментарий с id=" + commentId + " не найден");
+    }
+
     private Pageable createPageable(int from, int size, String sort) {
-        if (sort != null && sort.equalsIgnoreCase(SortType.VIEWS.name())) {
-            return PageRequest.of(from / size, size);
+        if (from < 0 || size <= 0) {
+            throw new BadRequestException("Invalid comment pagination parameters");
         }
-        return PageRequest.of(from / size, size, Sort.by("createdAt").ascending());
+        String field = sort == null || sort.isBlank() ? "createdAt" : sort.trim();
+        boolean descending = field.startsWith("-");
+        if (descending) {
+            field = field.substring(1);
+        }
+        // The API exposes an author object, but the entity persists an authorId.
+        field = switch (field) {
+            case "author.id" -> "authorId";
+            case "isDeleted" -> "deleted";
+            default -> field;
+        };
+        if (!List.of("id", "text", "eventId", "authorId", "createdAt", "updatedAt", "deleted")
+                .contains(field)) {
+            throw new BadRequestException("Unknown comment sort field: " + field);
+        }
+        Sort ordering = Sort.by(descending ? Sort.Direction.DESC : Sort.Direction.ASC, field);
+        return new OffsetPageRequest(from, size, "id".equals(field) ? ordering : ordering.and(Sort.by("id")));
     }
 
     private UserDto getUser(Long userId) {

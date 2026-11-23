@@ -112,7 +112,8 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
             throw new ConflictException("Только инициатор может менять статус заявок");
         }
         long confirmedCount = requestRepository.countByEventIdAndStatus(eventId, RequestStatus.CONFIRMED);
-        if (event.getParticipantLimit() > 0 && confirmedCount >= event.getParticipantLimit()) {
+        if (updateRequest.getStatus() == RequestStatus.CONFIRMED && event.getParticipantLimit() > 0
+                && confirmedCount >= event.getParticipantLimit()) {
             throw new ConflictException("Лимит участников уже достигнут");
         }
 
@@ -143,7 +144,8 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
             }
         }
 
-        if (event.getParticipantLimit() > 0 && confirmedCount >= event.getParticipantLimit()) {
+        if (updateRequest.getStatus() == RequestStatus.CONFIRMED && event.getParticipantLimit() > 0
+                && confirmedCount >= event.getParticipantLimit()) {
             List<ParticipationRequest> remaining = requestRepository.findByEventIdAndStatus(
                     eventId, RequestStatus.PENDING);
             for (ParticipationRequest request : remaining) {

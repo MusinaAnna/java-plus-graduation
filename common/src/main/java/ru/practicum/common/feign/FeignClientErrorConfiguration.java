@@ -1,4 +1,4 @@
-package ru.practicum.mainservice.config;
+package ru.practicum.common.feign;
 
 import feign.Response;
 import feign.Request;
@@ -6,13 +6,11 @@ import feign.RetryableException;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.common.exception.ConflictException;
 import ru.practicum.common.exception.ForbiddenException;
 import ru.practicum.common.exception.NotFoundException;
 
-@Configuration
 public class FeignClientErrorConfiguration {
     @Bean
     public ErrorDecoder downstreamErrorDecoder() {
