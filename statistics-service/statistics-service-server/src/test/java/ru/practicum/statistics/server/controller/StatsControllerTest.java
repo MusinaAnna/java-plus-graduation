@@ -1,3 +1,4 @@
+
 package ru.practicum.statistics.server.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,6 +8,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.dto.EndpointHit;
 import ru.practicum.dto.ViewStats;
 import ru.practicum.statistics.server.service.StatsService;
@@ -14,8 +16,11 @@ import ru.practicum.statistics.server.service.StatsService;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -54,7 +59,8 @@ public class StatsControllerTest {
                 new ViewStats("app1", "/uri1", 5L)
         );
 
-        when(service.getStats(any(), any(), any(), anyBoolean())).thenReturn(expected);
+        when(service.getStats(any(), any(), any(), anyBoolean()))
+                .thenReturn(expected);
 
         mockMvc.perform(get("/stats")
                         .param("start", "2025-01-01 10:00:00")
@@ -64,6 +70,24 @@ public class StatsControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.size()").value(1))
                 .andExpect(jsonPath("$[0].app").value("app1"));
+    }
 
+    @Test
+    void getStats_shouldThrowBadRequest_whenStartIsAfterEnd() {
+        LocalDateTime start = LocalDateTime.of(2025, 1, 1, 12, 0);
+        LocalDateTime end = LocalDateTime.of(2025, 1, 1, 10, 0);
+
+        BadRequestException exception = assertThrows(
+                BadRequestException.class,
+                () -> new StatsController(service)
+                        .getAll(start, end, null, false)
+        );
+
+        assertEquals(
+                "Start date must be before or equal to end date",
+                exception.getMessage()
+        );
+
+        verifyNoInteractions(service);
     }
 }

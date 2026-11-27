@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonGetter;
 
 import java.time.LocalDateTime;
 
@@ -80,4 +81,16 @@ public class CommentDto {
      * Используется для реализации soft-delete без физического удаления из БД.
      */
     private Boolean isDeleted;
+
+    /** JSON compatibility with the original Postman contract. */
+    @JsonGetter("event")
+    public Long getEvent() {
+        return eventId;
+    }
+
+    /** Retain createdAt while also exposing the required created field. */
+    @JsonGetter("created")
+    public LocalDateTime getCreated() {
+        return createdAt;
+    }
 }

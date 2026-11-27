@@ -1,8 +1,10 @@
+
 package ru.practicum.common.exception.controller;
 
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -73,19 +75,34 @@ public class ErrorHandler implements ErrorHandlerApi {
     }
 
     @Override
+    public ApiError handleServiceUnavailable(ServiceUnavailableException e) {
+        log.warn("Dependent service is unavailable: {}", e.getMessage(), e);
+        return new ApiError(
+                List.of(e.getMessage()),
+                "Service temporarily unavailable",
+                "A dependent service is unavailable.",
+                HttpStatus.SERVICE_UNAVAILABLE.name(),
+                LocalDateTime.now().format(FORMATTER)
+        );
+    }
+
+    @Override
     public ApiError handleValidation(MethodArgumentNotValidException e) {
         log.error("Validation error: {}", e.getMessage());
 
         List<String> errors = e.getBindingResult()
                 .getFieldErrors()
                 .stream()
-                .map(error -> String.format("Field: %s. Error: %s. Value: %s",
+                .map(error -> String.format(
+                        "Field: %s. Error: %s. Value: %s",
                         error.getField(),
                         error.getDefaultMessage(),
                         error.getRejectedValue()))
                 .collect(Collectors.toList());
 
-        String message = errors.isEmpty() ? e.getMessage() : errors.get(0);
+        String message = errors.isEmpty()
+                ? e.getMessage()
+                : errors.get(0);
 
         return new ApiError(
                 errors,
@@ -97,10 +114,32 @@ public class ErrorHandler implements ErrorHandlerApi {
     }
 
     @Override
-    public ApiError handleMissingParams(MissingServletRequestParameterException e) {
+    public ApiError handleMissingParams(
+            MissingServletRequestParameterException e) {
         return new ApiError(
                 null,
                 e.getMessage(),
+                "Incorrectly made request.",
+                HttpStatus.BAD_REQUEST.name(),
+                LocalDateTime.now().format(FORMATTER)
+        );
+    }
+
+    @Override
+    public ApiError handleHttpMessageNotReadable(
+            HttpMessageNotReadableException e) {
+
+        String message = e.getMessage();
+
+        if (message == null || message.isBlank()) {
+            message = "Request body is missing or malformed.";
+        }
+
+        log.warn("Invalid request body: {}", message);
+
+        return new ApiError(
+                null,
+                message,
                 "Incorrectly made request.",
                 HttpStatus.BAD_REQUEST.name(),
                 LocalDateTime.now().format(FORMATTER)
@@ -121,24 +160,28 @@ public class ErrorHandler implements ErrorHandlerApi {
 
     @Override
     public ApiError handleMethodArgumentTypeMismatch(
-            MethodArgumentTypeMismatchException exception
-    ) {
+            MethodArgumentTypeMismatchException exception) {
         return new ApiError(
                 List.of(exception.getMessage()),
-                "Failed to convert parameter '" + exception.getName() + "' with value '" + exception.getValue(),
+                "Failed to convert parameter '"
+                        + exception.getName()
+                        + "' with value '"
+                        + exception.getValue(),
                 "Incorrectly made request.",
                 HttpStatus.BAD_REQUEST.name(),
-                LocalDateTime.now().format(FORMATTER));
+                LocalDateTime.now().format(FORMATTER)
+        );
     }
 
     @Override
     public ApiError handleConstraintViolation(
-            ConstraintViolationException e
-    ) {
-        return new ApiError(List.of(e.getMessage()),
+            ConstraintViolationException e) {
+        return new ApiError(
+                List.of(e.getMessage()),
                 "Validation failed",
                 "Incorrectly made request.",
                 HttpStatus.BAD_REQUEST.name(),
-                LocalDateTime.now().format(FORMATTER));
+                LocalDateTime.now().format(FORMATTER)
+        );
     }
 }

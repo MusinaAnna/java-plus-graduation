@@ -1,0 +1,20 @@
+package ru.practicum.mainservice.clients;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import ru.practicum.common.feign.FeignClientErrorConfiguration;
+import ru.practicum.mainservice.clients.fallback.CategoryServiceClientFallbackFactory;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import ru.practicum.common.dto.CategoryDto;
+
+import java.util.List;
+
+@FeignClient(name = "category-service", path = "/internal/categories", configuration = FeignClientErrorConfiguration.class, fallbackFactory = CategoryServiceClientFallbackFactory.class)
+public interface CategoryServiceClient {
+    @GetMapping("/{categoryId}")
+    CategoryDto getCategory(@PathVariable("categoryId") Long categoryId);
+
+    @GetMapping
+    List<CategoryDto> getCategories(@RequestParam("ids") List<Long> ids);
+}
