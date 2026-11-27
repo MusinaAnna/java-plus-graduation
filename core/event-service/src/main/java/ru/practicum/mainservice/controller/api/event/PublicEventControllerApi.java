@@ -1,10 +1,10 @@
 package ru.practicum.mainservice.controller.api.event;
 
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import ru.practicum.common.dto.EventShortDto;
 import ru.practicum.mainservice.events.dto.EventFullDto;
 
@@ -31,10 +31,10 @@ public interface PublicEventControllerApi {
      * @param rangeStart    дата и время начала диапазона (опционально)
      * @param rangeEnd      дата и время окончания диапазона (опционально)
      * @param onlyAvailable фильтр для показа только событий с неисчерпанным лимитом запросов
-     * @param sort          вариант сортировки: EVENT_DATE или VIEWS (опционально)
+     * @param sort          вариант сортировки: EVENT_DATE, VIEWS или RATING (опционально)
      * @param from          начальная позиция для пагинации
      * @param size          размер страницы
-     * @return список кратких DTO событий с просмотрами и заявками
+     * @return список кратких DTO событий с рейтингом и заявками
      */
     @GetMapping
     List<EventShortDto> getEvents(
@@ -46,8 +46,7 @@ public interface PublicEventControllerApi {
             @RequestParam(defaultValue = "false") Boolean onlyAvailable,
             @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int from,
-            @RequestParam(defaultValue = "10") int size,
-            HttpServletRequest request);
+            @RequestParam(defaultValue = "10") int size);
 
     /**
      * Получение полной информации об опубликованном событии по идентификатору.
@@ -56,5 +55,5 @@ public interface PublicEventControllerApi {
      * @return полная информация о событии
      */
     @GetMapping("/{id}")
-    EventFullDto getEvent(@PathVariable Long id, HttpServletRequest request);
+    EventFullDto getEvent(@PathVariable Long id, @RequestHeader("X-EWM-USER-ID") long userId);
 }

@@ -33,6 +33,10 @@ class ParticipationRequestServiceImplTest {
     private EventServiceClient eventServiceClient;
     @Mock
     private UserServiceClient userServiceClient;
+    @Mock
+    private RegistrationOutboxService registrationOutboxService;
+    @Mock
+    private EventCapacityLock eventCapacityLock;
     @InjectMocks
     private ParticipationRequestServiceImpl service;
 
@@ -103,5 +107,24 @@ class ParticipationRequestServiceImplTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(service.addRequest(7L, 10L).getStatus()).isEqualTo(RequestStatus.CONFIRMED);
+    }
+
+    @Test
+    void addRequestLocksEventBeforeCheckingCapacity() {
+        event.setRequestModeration(false);
+        event.setParticipantLimit(1);
+        when(userServiceClient.getUser(7L)).thenReturn(user);
+        when(eventServiceClient.getEvent(10L)).thenReturn(event);
+        when(repository.findByEventIdAndRequesterId(10L, 7L)).thenReturn(Optional.empty());
+        when(repository.countByEventIdAndStatus(10L, RequestStatus.CONFIRMED)).thenReturn(0L);
+        when(repository.saveAndFlush(any(ParticipationRequest.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.addRequest(7L, 10L).getStatus()).isEqualTo(RequestStatus.CONFIRMED);
+
+        var order = org.mockito.Mockito.inOrder(eventCapacityLock, repository);
+        order.verify(eventCapacityLock).lock(10L);
+        order.verify(repository).countByEventIdAndStatus(10L, RequestStatus.CONFIRMED);
+        order.verify(repository).saveAndFlush(any(ParticipationRequest.class));
     }
 }

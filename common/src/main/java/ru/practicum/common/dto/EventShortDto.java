@@ -52,10 +52,8 @@ public class EventShortDto {
      */
     private Long confirmedRequests;
 
-    /**
-     * Количество просмотров события.
-     */
-    private Long views;
+    /** Sum of maximum interaction weights from Analyzer. */
+    private double rating;
 
     /**
      * Дата и время проведения события.

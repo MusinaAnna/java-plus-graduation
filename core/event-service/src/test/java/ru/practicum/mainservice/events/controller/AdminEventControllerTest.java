@@ -80,7 +80,7 @@ public class AdminEventControllerTest {
                 .participantLimit(10)
                 .requestModeration(true)
                 .confirmedRequests(0L)
-                .views(0L)
+                .rating(0.0)
                 .build();
 
         updateRequest = UpdateEventAdminRequest.builder()

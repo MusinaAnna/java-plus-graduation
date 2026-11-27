@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import ru.practicum.common.exception.*;
@@ -126,6 +127,17 @@ public class ErrorHandler implements ErrorHandlerApi {
     }
 
     @Override
+    public ApiError handleMissingHeader(MissingRequestHeaderException e) {
+        return new ApiError(
+                null,
+                e.getMessage(),
+                "Incorrectly made request.",
+                HttpStatus.BAD_REQUEST.name(),
+                LocalDateTime.now().format(FORMATTER)
+        );
+    }
+
+    @Override
     public ApiError handleHttpMessageNotReadable(
             HttpMessageNotReadableException e) {
 
@@ -150,7 +162,7 @@ public class ErrorHandler implements ErrorHandlerApi {
     public ApiError handleException(Exception e) {
         log.error("Internal server error: {}", e.getMessage(), e);
         return new ApiError(
-                List.of(e.getMessage()),
+                List.of("Internal server error"),
                 "Internal server error",
                 "An unexpected error occurred",
                 HttpStatus.INTERNAL_SERVER_ERROR.name(),

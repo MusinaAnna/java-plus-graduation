@@ -7,18 +7,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
-import org.mockito.ArgumentCaptor;
 import ru.practicum.common.dto.EventShortDto;
-import ru.practicum.dto.EndpointHit;
 import ru.practicum.mainservice.events.dto.PublicEventQuery;
 import ru.practicum.mainservice.events.service.EventService;
-import ru.practicum.statistics.client.controller.StatsClient;
+import ru.practicum.statistics.client.grpc.UserActionGrpcClient;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -35,7 +34,7 @@ public class PublicEventControllerTest {
     private EventService eventService;
 
     @MockBean
-    private StatsClient statsClient;
+    private UserActionGrpcClient userActionClient;
 
     @Test
     void getEvents_shouldReturnListOfEvents() throws Exception {
@@ -44,17 +43,11 @@ public class PublicEventControllerTest {
         when(eventService.getPublicEvents(eq(new PublicEventQuery(
                 null, null, null, null, null, false, null, 0, 10)))).thenReturn(events);
 
-        mockMvc.perform(get("/events").with(request -> {
-                    request.setRemoteAddr("192.0.2.25");
-                    return request;
-                }))
+        mockMvc.perform(get("/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(1L));
 
-        ArgumentCaptor<EndpointHit> hitCaptor = ArgumentCaptor.forClass(EndpointHit.class);
-        verify(statsClient).sendHit(hitCaptor.capture());
-        org.assertj.core.api.Assertions.assertThat(hitCaptor.getValue().getUri()).isEqualTo("/events");
-        org.assertj.core.api.Assertions.assertThat(hitCaptor.getValue().getIp()).isEqualTo("192.0.2.25");
+        verifyNoInteractions(userActionClient);
     }
 
     @Test
@@ -70,9 +63,7 @@ public class PublicEventControllerTest {
                         }))
                 .andExpect(status().isOk());
 
-        ArgumentCaptor<EndpointHit> hitCaptor = ArgumentCaptor.forClass(EndpointHit.class);
-        verify(statsClient).sendHit(hitCaptor.capture());
-        org.assertj.core.api.Assertions.assertThat(hitCaptor.getValue().getIp()).isEqualTo("198.51.100.12");
+        verifyNoInteractions(userActionClient);
     }
 
     @Test
@@ -94,12 +85,18 @@ public class PublicEventControllerTest {
     void getEvent_shouldReturnEvent() throws Exception {
         Long eventId = 1L;
 
-        mockMvc.perform(get("/events/{id}", eventId))
+        mockMvc.perform(get("/events/{id}", eventId)
+                        .header("X-EWM-USER-ID", "42"))
                 .andExpect(status().isOk());
 
-        ArgumentCaptor<EndpointHit> hitCaptor = ArgumentCaptor.forClass(EndpointHit.class);
-        verify(statsClient).sendHit(hitCaptor.capture());
-        org.assertj.core.api.Assertions.assertThat(hitCaptor.getValue().getUri()).isEqualTo("/events/1");
+        verify(userActionClient).sendView(42L, 1L);
+    }
+
+    @Test
+    void missingUserIdHeaderReturnsBadRequest() throws Exception {
+        mockMvc.perform(get("/events/{id}", 1L))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(userActionClient);
     }
 
     private EventShortDto createEventShortDto() {

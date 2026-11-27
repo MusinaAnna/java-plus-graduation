@@ -16,4 +16,8 @@ public interface RequestServiceClient {
 
     @GetMapping("/confirmed-count")
     long getConfirmedCount(@RequestParam("eventId") Long eventId);
+
+    @GetMapping("/confirmed-participation")
+    boolean isConfirmedParticipant(@RequestParam("eventId") Long eventId,
+                                   @RequestParam("userId") Long userId);
 }

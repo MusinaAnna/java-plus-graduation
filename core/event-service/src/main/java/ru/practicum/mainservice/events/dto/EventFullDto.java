@@ -18,8 +18,6 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@Getter
-@Setter
 public class EventFullDto {
 
     /**
@@ -77,10 +75,8 @@ public class EventFullDto {
      */
     private Long confirmedRequests;
 
-    /**
-     * Количество просмотров.
-     */
-    private Long views;
+    /** Sum of maximum interaction weights from Analyzer. */
+    private double rating;
 
     /**
      * Дата и время проведения события.

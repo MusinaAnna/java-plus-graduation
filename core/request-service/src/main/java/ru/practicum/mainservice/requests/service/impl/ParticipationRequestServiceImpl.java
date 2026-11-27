@@ -32,6 +32,9 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
     private final EventServiceClient eventServiceClient;
     private final UserServiceClient userServiceClient;
 
+    private final RegistrationOutboxService registrationOutboxService;
+    private final EventCapacityLock eventCapacityLock;
+
     private ParticipationRequestDto toDto(ParticipationRequest request) {
         return new ParticipationRequestDto(request.getId(), request.getEventId(), request.getRequesterId(),
                 request.getStatus(), request.getCreated());
@@ -54,6 +57,9 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
         if (event.getInitiatorId().equals(userId)) {
             throw new ConflictException("Инициатор события не может подать заявку на участие");
         }
+        if (event.getParticipantLimit() > 0) {
+            eventCapacityLock.lock(eventId);
+        }
         if (requestRepository.findByEventIdAndRequesterId(eventId, userId).isPresent()) {
             throw new ConflictException("Запрос на участие уже существует");
         }
@@ -72,6 +78,7 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
         try {
             ParticipationRequest saved = requestRepository.saveAndFlush(request);
             log.info("Добавлен запрос на участие: {}", saved.getId());
+            registrationOutboxService.enqueue(userId, eventId);
             return toDto(saved);
         } catch (DataIntegrityViolationException exception) {
             throw new ConflictException("Запрос на участие уже существует");
@@ -110,6 +117,9 @@ public class ParticipationRequestServiceImpl implements ParticipationRequestServ
         EventInternalDto event = getEvent(eventId);
         if (!event.getInitiatorId().equals(userId)) {
             throw new ConflictException("Только инициатор может менять статус заявок");
+        }
+        if (updateRequest.getStatus() == RequestStatus.CONFIRMED && event.getParticipantLimit() > 0) {
+            eventCapacityLock.lock(eventId);
         }
         long confirmedCount = requestRepository.countByEventIdAndStatus(eventId, RequestStatus.CONFIRMED);
         if (updateRequest.getStatus() == RequestStatus.CONFIRMED && event.getParticipantLimit() > 0
