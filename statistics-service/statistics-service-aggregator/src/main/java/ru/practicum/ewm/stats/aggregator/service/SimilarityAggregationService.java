@@ -17,9 +17,6 @@ public class SimilarityAggregationService {
     private final Map<Long, Double> sumByEvent = new HashMap<>();
     private final Map<EventPair, Double> minimumSums = new HashMap<>();
 
-    /**
-     * Builds an update without changing stored sums. Kafka output must succeed before commit.
-     */
     public synchronized AggregationUpdate prepare(UserActionAvro action) {
         if (action.getUserId() <= 0 || action.getEventId() <= 0 || action.getTimestamp() == null) {
             throw new IllegalArgumentException("Invalid user action");
@@ -46,6 +43,9 @@ public class SimilarityAggregationService {
             }
             double otherSum = sumByEvent.getOrDefault(otherEvent, 0.0);
             double otherUserWeight = entry.getValue().getOrDefault(userId, 0.0);
+            if (otherUserWeight <= 0.0) {
+                continue;
+            }
             EventPair pair = EventPair.of(eventId, otherEvent);
             double oldMinimum = Math.min(oldWeight, otherUserWeight);
             double newMinimum = Math.min(newWeight, otherUserWeight);

@@ -17,17 +17,16 @@ class SimilarityAggregationServiceTest {
 
     @Test
     void followsWeightedSimilarityExample() {
-        // A: [1,1,0,0.8,0], B: [0,0.8,1,0,1].
         commit(1, 1, ActionTypeAvro.LIKE);
         commit(2, 1, ActionTypeAvro.LIKE);
         commit(4, 1, ActionTypeAvro.REGISTER);
-        commit(2, 2, ActionTypeAvro.REGISTER);
-        commit(3, 2, ActionTypeAvro.LIKE);
-        List<EventSimilarityAvro> result = commit(5, 2, ActionTypeAvro.LIKE);
+        List<EventSimilarityAvro> result = commit(2, 2, ActionTypeAvro.REGISTER);
         assertEquals(1, result.size());
         assertEquals(1L, result.get(0).getEventA());
         assertEquals(2L, result.get(0).getEventB());
-        assertEquals(0.8 / 2.8, result.get(0).getScore(), 0.000001);
+        assertEquals(0.8 / Math.sqrt(2.8 * 0.8), result.get(0).getScore(), 0.000001);
+        assertTrue(commit(3, 2, ActionTypeAvro.LIKE).isEmpty());
+        assertTrue(commit(5, 2, ActionTypeAvro.LIKE).isEmpty());
     }
 
     @Test
@@ -44,6 +43,33 @@ class SimilarityAggregationServiceTest {
                 .filter(item -> item.getEventA() == 1 && item.getEventB() == 4)
                 .findFirst().orElseThrow();
         assertEquals(0.8 / Math.sqrt(3.0 * 1.2), similarity.getScore(), 0.000001);
+    }
+
+    @Test
+    void publishesOnlyPairsWithCurrentUserInteractionOnBothEvents() {
+        commit(8, 9, ActionTypeAvro.REGISTER);
+        assertEquals(1, commit(8, 13, ActionTypeAvro.REGISTER).size());
+        assertTrue(commit(4, 9, ActionTypeAvro.REGISTER).isEmpty());
+        commit(3, 12, ActionTypeAvro.VIEW);
+
+        List<EventSimilarityAvro> result = commit(4, 6, ActionTypeAvro.REGISTER);
+        assertEquals(1, result.size());
+        assertEquals(6L, result.get(0).getEventA());
+        assertEquals(9L, result.get(0).getEventB());
+        assertTrue(commit(6, 13, ActionTypeAvro.REGISTER).isEmpty());
+    }
+
+    @Test
+    void updatesSimilarityAfterSharedUserActionWeightIncreases() {
+        commit(4, 9, ActionTypeAvro.REGISTER);
+        commit(4, 6, ActionTypeAvro.REGISTER);
+        assertTrue(commit(8, 9, ActionTypeAvro.REGISTER).isEmpty());
+
+        List<EventSimilarityAvro> result = commit(4, 6, ActionTypeAvro.LIKE);
+        assertEquals(1, result.size());
+        assertEquals(6L, result.get(0).getEventA());
+        assertEquals(9L, result.get(0).getEventB());
+        assertEquals(0.8 / Math.sqrt(1.0 * 1.6), result.get(0).getScore(), 0.000001);
     }
 
     @Test
