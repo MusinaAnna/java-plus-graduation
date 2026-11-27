@@ -20,6 +20,8 @@ import ru.practicum.ewm.stats.aggregator.service.SimilarityAggregationService;
 @Component
 public class AggregatorKafkaListener {
 
+    private static final long ORDERED_SIMILARITY_KEY = 0L;
+
     private final SimilarityAggregationService aggregationService;
     private final KafkaTemplate<Long, byte[]> producer;
     private final AvroBinaryCodec codec;
@@ -56,7 +58,7 @@ public class AggregatorKafkaListener {
         producer.executeInTransaction(operations -> {
             for (EventSimilarityAvro similarity : update.similarities()) {
                 try {
-                    operations.send(similarityTopic, similarity.getEventA(), codec.encodeSimilarity(similarity))
+                    operations.send(similarityTopic, ORDERED_SIMILARITY_KEY, codec.encodeSimilarity(similarity))
                             .get(30, TimeUnit.SECONDS);
                 } catch (Exception exception) {
                     throw new IllegalStateException("Similarity publish failed", exception);
