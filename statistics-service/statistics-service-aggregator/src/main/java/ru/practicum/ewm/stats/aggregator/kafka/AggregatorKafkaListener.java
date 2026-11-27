@@ -1,8 +1,11 @@
 package ru.practicum.ewm.stats.aggregator.kafka;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -12,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 import ru.practicum.ewm.stats.avro.EventSimilarityAvro;
 import ru.practicum.ewm.stats.avro.UserActionAvro;
@@ -56,10 +60,14 @@ public class AggregatorKafkaListener {
         SimilarityAggregationService.AggregationUpdate update = aggregationService.prepare(action);
 
         producer.executeInTransaction(operations -> {
+            List<CompletableFuture<SendResult<Long, byte[]>>> pending = new ArrayList<>();
             for (EventSimilarityAvro similarity : update.similarities()) {
+                pending.add(operations.send(
+                        similarityTopic, ORDERED_SIMILARITY_KEY, codec.encodeSimilarity(similarity)));
+            }
+            for (CompletableFuture<SendResult<Long, byte[]>> result : pending) {
                 try {
-                    operations.send(similarityTopic, ORDERED_SIMILARITY_KEY, codec.encodeSimilarity(similarity))
-                            .get(30, TimeUnit.SECONDS);
+                    result.get(30, TimeUnit.SECONDS);
                 } catch (Exception exception) {
                     throw new IllegalStateException("Similarity publish failed", exception);
                 }

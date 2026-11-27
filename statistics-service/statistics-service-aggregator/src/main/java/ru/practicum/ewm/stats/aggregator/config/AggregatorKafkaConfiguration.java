@@ -57,6 +57,8 @@ public class AggregatorKafkaConfiguration {
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         config.put(ProducerConfig.ACKS_CONFIG, "all");
         config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+        config.put(ProducerConfig.LINGER_MS_CONFIG, 100);
+        config.put(ProducerConfig.BATCH_SIZE_CONFIG, 65536);
         DefaultKafkaProducerFactory<Long, byte[]> factory = new DefaultKafkaProducerFactory<>(config);
         factory.setTransactionIdPrefix("ewm-aggregator-");
         return factory;
