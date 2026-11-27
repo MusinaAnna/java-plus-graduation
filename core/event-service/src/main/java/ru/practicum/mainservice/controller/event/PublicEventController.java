@@ -1,23 +1,28 @@
 package ru.practicum.mainservice.controller.event;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import ru.practicum.common.dto.EventShortDto;
-import ru.practicum.dto.EndpointHit;
-import ru.practicum.mainservice.controller.api.event.PublicEventControllerApi;
-import ru.practicum.mainservice.events.dto.PublicEventQuery;
-import ru.practicum.mainservice.events.dto.EventFullDto;
-import ru.practicum.mainservice.events.service.EventService;
-import ru.practicum.statistics.client.controller.StatsClient;
-
 import java.time.LocalDateTime;
 import java.util.List;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestController;
+import ru.practicum.common.dto.EventShortDto;
+import ru.practicum.common.exception.BadRequestException;
+import ru.practicum.mainservice.controller.api.event.PublicEventControllerApi;
+import ru.practicum.mainservice.events.dto.EventFullDto;
+import ru.practicum.mainservice.events.dto.PublicEventQuery;
+import ru.practicum.mainservice.events.service.EventService;
+import ru.practicum.statistics.client.grpc.UserActionGrpcClient;
+import ru.practicum.common.exception.ServiceUnavailableException;
 
 import static ru.practicum.common.config.JacksonConfig.DATE_TIME_FORMAT;
 
@@ -26,10 +31,10 @@ import static ru.practicum.common.config.JacksonConfig.DATE_TIME_FORMAT;
 @RequiredArgsConstructor
 @RequestMapping("/events")
 public class PublicEventController implements PublicEventControllerApi {
-    private static final String APP_NAME = "ewm-main-service";
 
     private final EventService eventService;
-    private final StatsClient statsClient;
+    @Autowired
+    private UserActionGrpcClient userActionClient;
 
     @Override
     public List<EventShortDto> getEvents(
@@ -41,45 +46,49 @@ public class PublicEventController implements PublicEventControllerApi {
             @RequestParam(defaultValue = "false") Boolean onlyAvailable,
             @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int from,
-            @RequestParam(defaultValue = "10") int size,
-            HttpServletRequest request) {
+            @RequestParam(defaultValue = "10") int size) {
 
-        log.info("GET /events with params: text={}, categories={}, paid={}, rangeStart={}, rangeEnd={}, " +
-                        "onlyAvailable={}, sort={}, from={}, size={}",
+        log.info("GET /events with params: text={}, categories={}, paid={}, rangeStart={}, rangeEnd={}, "
+                        + "onlyAvailable={}, sort={}, from={}, size={}",
                 text, categories, paid, rangeStart, rangeEnd, onlyAvailable, sort, from, size);
 
-        List<EventShortDto> events = eventService.getPublicEvents(new PublicEventQuery(
+        return eventService.getPublicEvents(new PublicEventQuery(
                 text, categories, paid, rangeStart, rangeEnd, onlyAvailable, sort, from, size));
-        sendHit(request);
-        return events;
     }
 
     @Override
-    public EventFullDto getEvent(@PathVariable Long id, HttpServletRequest request) {
-        log.info("GET /events/{}", id);
+    public EventFullDto getEvent(
+            @PathVariable Long id,
+            @RequestHeader("X-EWM-USER-ID") long userId) {
+
+        if (userId <= 0) {
+            throw new BadRequestException("Invalid X-EWM-USER-ID header");
+        }
+
         EventFullDto event = eventService.getPublicEvent(id);
-        sendHit(request);
+
+        if (userActionClient == null) {
+            throw new ServiceUnavailableException("Collector client is not configured");
+        }
+        userActionClient.sendView(userId, id);
+
         return event;
     }
 
-    private void sendHit(HttpServletRequest request) {
-        statsClient.sendHit(new EndpointHit(
-                APP_NAME,
-                request.getRequestURI(),
-                resolveClientIp(request),
-                LocalDateTime.now()
-        ));
+    @GetMapping("/recommendations")
+    public List<EventShortDto> getRecommendations(
+            @RequestHeader("X-EWM-USER-ID") Long userId,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return eventService.getRecommendedEvents(userId, size);
     }
 
-    private String resolveClientIp(HttpServletRequest request) {
-        String forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            String[] addresses = forwardedFor.split(",");
-            String clientAddress = addresses[0].trim();
-            if (!clientAddress.isBlank()) {
-                return clientAddress;
-            }
-        }
-        return request.getRemoteAddr();
+    @PutMapping("/{id}/like")
+    @ResponseStatus(HttpStatus.OK)
+    public void likeEvent(
+            @PathVariable Long id,
+            @RequestHeader("X-EWM-USER-ID") Long userId) {
+
+        eventService.likeEvent(userId, id);
     }
 }

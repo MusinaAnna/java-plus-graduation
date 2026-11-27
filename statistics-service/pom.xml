@@ -16,6 +16,11 @@
         <module>statistics-service-dto</module>
         <module>statistics-service-client</module>
         <module>statistics-service-server</module>
+        <module>statistics-service-proto</module>
+        <module>statistics-service-avro</module>
+        <module>statistics-service-collector</module>
+        <module>statistics-service-aggregator</module>
+        <module>statistics-service-analyzer</module>
     </modules>
 
     <properties>

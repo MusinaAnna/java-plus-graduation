@@ -27,7 +27,6 @@ import ru.practicum.mainservice.events.mapper.EventMapper;
 import ru.practicum.mainservice.events.repository.EventRepository;
 import ru.practicum.mainservice.events.repository.EventRepositoryCustom;
 import ru.practicum.statistics.client.controller.StatsClient;
-import ru.practicum.statistics.client.exception.StatsServerUnavailable;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -143,7 +142,7 @@ class EventServiceImplTest {
         assertThat(result.getInitiator().getId()).isEqualTo(user.getId());
         assertThat(result.getInitiator().getName()).isEqualTo(user.getName());
         assertThat(result.getConfirmedRequests()).isEqualTo(0L);
-        assertThat(result.getViews()).isEqualTo(0L);
+        assertThat(result.getRating()).isEqualTo(0.0);
 
         assertThat(event.getInitiatorId()).isEqualTo(user.getId());
         assertThat(event.getCategoryId()).isEqualTo(category.getId());
@@ -305,14 +304,12 @@ class EventServiceImplTest {
         event.setState(EventState.PUBLISHED);
         when(repository.findById(event.getId())).thenReturn(Optional.of(event));
         when(mapper.toFullDto(event)).thenReturn(fullDto);
-        when(statsClient.getStats(anyString(), anyString(), anyList(), eq(true)))
-                .thenThrow(new StatsServerUnavailable("Statistics service is temporarily unavailable"));
-
         EventFullDto result = eventService.getPublicEvent(event.getId());
 
-        assertThat(result.getViews()).isZero();
+        assertThat(result.getRating()).isZero();
         assertThat(result.getConfirmedRequests()).isZero();
         assertThat(result.getCategory()).isEqualTo(category);
         assertThat(result.getInitiator().getId()).isEqualTo(user.getId());
+        verifyNoInteractions(statsClient);
     }
 }

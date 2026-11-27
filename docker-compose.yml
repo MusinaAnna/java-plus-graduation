@@ -29,6 +29,122 @@ services:
       EUREKA_INSTANCE_ID: config-server-1
       EUREKA_URI: http://discovery-server:8761/eureka/
 
+  # Stage 3: Kafka in single-node KRaft mode (local development only).
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    ports:
+      - "127.0.0.1:19092:9092"
+    environment:
+      CLUSTER_ID: "LYgyN-ShR3ylKux56h9mfw"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:29093"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:19092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # Create the two required topics only after the broker is healthy.
+  kafka-init:
+    image: confluentinc/cp-kafka:7.7.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.user-actions.v1 --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.events-similarity.v1 --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.user-actions.v1.DLT --partitions 3 --replication-factor 1
+        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic stats.events-similarity.v1.DLT --partitions 3 --replication-factor 1
+        kafka-configs --bootstrap-server kafka:29092 --entity-type topics --entity-name stats.user-actions.v1 --alter --add-config retention.ms=-1
+        kafka-topics --bootstrap-server kafka:29092 --describe --topic stats.user-actions.v1
+        kafka-topics --bootstrap-server kafka:29092 --describe --topic stats.events-similarity.v1
+
+
+  collector:
+    build: ./statistics-service/statistics-service-collector
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    environment:
+      EUREKA_INSTANCE_ID: collector-1
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+  # Stage 3: computes similarities from actions and publishes Avro results.
+  aggregator:
+    build: ./statistics-service/statistics-service-aggregator
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    environment:
+      EUREKA_INSTANCE_ID: aggregator-1
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+
+  # Stage 3: recommendation API and persistent interaction/similarity state.
+  analyzer:
+    build: ./statistics-service/statistics-service-analyzer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+      analyzer-db:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+      discovery-server:
+        condition: service_healthy
+    environment:
+      EUREKA_URI: http://discovery-server:8761/eureka/
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ANALYZER_DB_HOST: analyzer-db
+      ANALYZER_DB_NAME: ewm_recommendations
+      ANALYZER_DB_USER: postgres
+      ANALYZER_DB_PASSWORD: postgres
+
+  analyzer-db:
+    image: postgres:16.1
+    environment:
+      POSTGRES_DB: ewm_recommendations
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - analyzer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ewm_recommendations"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
   user-db:
     image: postgres:16.1
     environment:
@@ -170,6 +286,10 @@ services:
         condition: service_healthy
       stats-server:
         condition: service_started
+      analyzer:
+        condition: service_started
+      collector:
+        condition: service_started
     environment:
       EUREKA_INSTANCE_ID: event-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
@@ -186,6 +306,8 @@ services:
         condition: service_healthy
       request-db:
         condition: service_healthy
+      collector:
+        condition: service_started
     environment:
       EUREKA_INSTANCE_ID: request-service-1
       EUREKA_URI: http://discovery-server:8761/eureka/
@@ -292,6 +414,7 @@ services:
       EUREKA_URI: http://discovery-server:8761/eureka/
 
 volumes:
+  analyzer-db-data:
   user-db-data:
   event-db-data:
   request-db-data:
@@ -300,3 +423,4 @@ volumes:
   comment-db-data:
   additional-db-data:
   stats-db-data:
+  kafka-data:

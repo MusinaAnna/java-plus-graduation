@@ -31,6 +31,12 @@ public class RequestServiceClientFallbackFactory implements FallbackFactory<Requ
                 }
                 throw failure;
             }
+
+            @Override
+            public boolean isConfirmedParticipant(Long eventId, Long userId) {
+                // Fail closed: unavailable request-service must never authorize a LIKE.
+                throw DownstreamExceptionMapper.map("request-service", cause);
+            }
         };
     }
 }

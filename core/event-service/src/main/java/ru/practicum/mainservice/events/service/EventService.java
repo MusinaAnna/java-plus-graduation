@@ -28,6 +28,10 @@ public interface EventService {
 
     EventFullDto getPublicEvent(Long eventId);
 
+    List<EventShortDto> getRecommendedEvents(Long userId, int size);
+
+    void likeEvent(Long userId, Long eventId);
+
     EventInternalDto getInternalEvent(Long eventId);
 
     List<EventShortDto> getInternalEventShorts(List<Long> eventIds);

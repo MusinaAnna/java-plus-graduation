@@ -1,0 +1,3 @@
+*
+!target/
+!target/stats-analyzer-*.jar

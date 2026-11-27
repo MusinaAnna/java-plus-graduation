@@ -12,13 +12,13 @@ public interface EventMapper {
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "initiator", ignore = true)
     @Mapping(target = "confirmedRequests", ignore = true)
-    @Mapping(target = "views", ignore = true)
+    @Mapping(target = "rating", ignore = true)
     EventFullDto toFullDto(Event event);
 
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "initiator", ignore = true)
     @Mapping(target = "confirmedRequests", ignore = true)
-    @Mapping(target = "views", ignore = true)
+    @Mapping(target = "rating", ignore = true)
     EventShortDto toShortDto(Event event);
 
     @Mapping(target = "id", ignore = true)

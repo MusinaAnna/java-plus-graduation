@@ -28,6 +28,12 @@ public class RequestInternalController {
                 .collect(Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
     }
 
+    @GetMapping("/confirmed-participation")
+    public boolean isConfirmedParticipant(@RequestParam("eventId") Long eventId,
+                                          @RequestParam("userId") Long userId) {
+        return repository.existsByEventIdAndRequesterIdAndStatus(eventId, userId, RequestStatus.CONFIRMED);
+    }
+
     @GetMapping("/confirmed-count")
     public long getConfirmedCount(@RequestParam("eventId") Long eventId) {
         return repository.countByEventIdAndStatus(eventId, RequestStatus.CONFIRMED);

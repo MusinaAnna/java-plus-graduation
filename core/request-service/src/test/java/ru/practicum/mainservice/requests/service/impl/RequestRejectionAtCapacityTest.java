@@ -34,6 +34,8 @@ class RequestRejectionAtCapacityTest {
     @Mock
     private ParticipationRequestRepository repository;
     @Mock
+    private EventCapacityLock eventCapacityLock;
+    @Mock
     private EventServiceClient eventServiceClient;
     @Mock
     private UserServiceClient userServiceClient;
@@ -67,6 +69,7 @@ class RequestRejectionAtCapacityTest {
         assertThat(result.getConfirmedRequests()).isEmpty();
         verify(repository).saveAll(any());
         verify(repository, never()).findByEventIdAndStatus(10L, RequestStatus.PENDING);
+        org.mockito.Mockito.verifyNoInteractions(eventCapacityLock);
     }
 
     @Test
@@ -76,5 +79,6 @@ class RequestRejectionAtCapacityTest {
                 .isInstanceOf(ConflictException.class)
                 .hasMessageContaining("Лимит");
         verify(repository, never()).saveAll(any());
+        verify(eventCapacityLock).lock(10L);
     }
 }

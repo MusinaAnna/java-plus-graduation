@@ -2,6 +2,7 @@ package ru.practicum.mainservice.events.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.practicum.common.dto.CategoryDto;
@@ -16,6 +17,7 @@ import ru.practicum.common.pagination.OffsetPageRequest;
 import ru.practicum.common.exception.BadRequestException;
 import ru.practicum.common.exception.ConflictException;
 import ru.practicum.common.exception.NotFoundException;
+import ru.practicum.common.exception.ServiceUnavailableException;
 import ru.practicum.dto.ViewStats;
 import ru.practicum.mainservice.clients.CategoryServiceClient;
 import ru.practicum.mainservice.clients.RequestServiceClient;
@@ -34,6 +36,9 @@ import ru.practicum.mainservice.events.utils.EventUpdateUtils;
 import ru.practicum.mainservice.events.utils.EventValidation;
 import ru.practicum.statistics.client.controller.StatsClient;
 import ru.practicum.statistics.client.exception.StatsServerUnavailable;
+import ru.practicum.statistics.client.grpc.RecommendationsGrpcClient;
+import ru.practicum.statistics.client.grpc.UserActionGrpcClient;
+import ru.practicum.ewm.stats.grpc.dashboard.RecommendedEventProto;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -61,6 +66,12 @@ public class EventServiceImpl implements EventService {
     private final EventRepositoryCustom eventRepositoryCustom;
     private final RequestServiceClient requestServiceClient;
 
+    @Autowired
+    private RecommendationsGrpcClient recommendationsClient;
+
+    @Autowired
+    private UserActionGrpcClient userActionClient;
+
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern(DATE_TIME_FORMAT);
 
     @Override
@@ -73,15 +84,13 @@ public class EventServiceImpl implements EventService {
 
         List<Event> events;
         if (confirmedOnly) {
-            // A remote confirmed-count filter must be applied before logical pagination.
             events = findConfirmedAdminPage(query, users, categories);
         } else {
             events = eventRepositoryCustom.findAllByAdminFilters(users, query.states(), categories,
                     query.rangeStart(), query.rangeEnd(), offsetPage(query.from(), query.size())).getContent();
         }
         Map<Long, Long> confirmedCounts = getConfirmedRequestsCounts(events);
-        Map<Long, Long> viewsCounts = getViewsCounts(events);
-        return enrichFullEvents(events, confirmedCounts, viewsCounts);
+        return enrichFullEvents(events, confirmedCounts);
     }
 
     private List<Event> findConfirmedAdminPage(AdminEventQuery query, List<Long> users, List<Long> categories) {
@@ -135,7 +144,7 @@ public class EventServiceImpl implements EventService {
                 case REJECT_EVENT -> event.setState(EventState.CANCELED);
             }
         }
-        return enrichWithViewsAndRequests(repository.save(event));
+        return enrichWithRatingsAndRequests(repository.save(event));
     }
 
     @Override
@@ -144,8 +153,7 @@ public class EventServiceImpl implements EventService {
         getUser(userId);
         List<Event> events = repository.findByInitiatorId(userId, offsetPage(from, size)).getContent();
         Map<Long, Long> confirmedCounts = getConfirmedRequestsCounts(events);
-        Map<Long, Long> viewsCounts = getViewsCounts(events);
-        return enrichShortEvents(events, confirmedCounts, viewsCounts);
+        return enrichShortEvents(events, confirmedCounts);
     }
 
     @Override
@@ -161,7 +169,7 @@ public class EventServiceImpl implements EventService {
         event.setPaid(dto.getPaid() != null ? dto.getPaid() : false);
         event.setParticipantLimit(dto.getParticipantLimit() != null ? dto.getParticipantLimit() : 0);
         event.setRequestModeration(dto.getRequestModeration() != null ? dto.getRequestModeration() : true);
-        return enrichWithViewsAndRequests(repository.save(event));
+        return enrichWithRatingsAndRequests(repository.save(event));
     }
 
     @Override
@@ -171,7 +179,7 @@ public class EventServiceImpl implements EventService {
         if (!event.getInitiatorId().equals(userId)) {
             throw new NotFoundException("Event with id " + eventId + " not found for user " + userId);
         }
-        return enrichWithViewsAndRequests(event);
+        return enrichWithRatingsAndRequests(event);
     }
 
     @Override
@@ -198,7 +206,7 @@ public class EventServiceImpl implements EventService {
                 default -> throw new BadRequestException("Unknown state action: " + request.getStateAction());
             }
         }
-        return enrichWithViewsAndRequests(repository.save(event));
+        return enrichWithRatingsAndRequests(repository.save(event));
     }
 
     @Override
@@ -212,9 +220,9 @@ public class EventServiceImpl implements EventService {
         }
 
         boolean sortByViews = SortType.VIEWS.name().equalsIgnoreCase(query.sort());
+        boolean sortByRating = SortType.RATING.name().equalsIgnoreCase(query.sort());
         boolean filterAvailable = Boolean.TRUE.equals(query.onlyAvailable());
-        // Global sorting/filtering requires considering candidates before pagination.
-        boolean allCandidates = sortByViews || filterAvailable;
+        boolean allCandidates = sortByViews || sortByRating || filterAvailable;
         ResolvedEvents resolved = findPublicCandidates(query, rangeStart, rangeEnd, allCandidates);
         List<Event> events = new ArrayList<>(resolved.events());
         Map<Long, Long> confirmedCounts = getConfirmedRequestsCounts(events);
@@ -222,15 +230,20 @@ public class EventServiceImpl implements EventService {
             events.removeIf(event -> event.getParticipantLimit() > 0
                     && confirmedCounts.getOrDefault(event.getId(), 0L) >= event.getParticipantLimit());
         }
-        Map<Long, Long> viewsCounts = getViewsCounts(events);
+        Map<Long, Long> viewsCounts = sortByViews ? getViewsCounts(events) : Map.of();
+        Map<Long, Double> ratings = getRatingScores(events);
         if (sortByViews) {
             events.sort(Comparator.comparingLong((Event event) -> viewsCounts.getOrDefault(event.getId(), 0L))
+                    .reversed().thenComparing(Event::getId));
+        } else if (sortByRating) {
+            events.sort(Comparator.comparingDouble((Event event) -> ratings.getOrDefault(event.getId(), 0.0))
                     .reversed().thenComparing(Event::getId));
         }
         if (allCandidates) {
             events = takePage(events, query.from(), query.size());
         }
-        return enrichShortEvents(events, confirmedCounts, viewsCounts, resolved.categories(), resolved.users());
+        return enrichShortEvents(events, confirmedCounts,
+                resolved.categories(), resolved.users(), ratings);
     }
 
     private ResolvedEvents findPublicCandidates(PublicEventQuery query, LocalDateTime rangeStart,
@@ -242,8 +255,6 @@ public class EventServiceImpl implements EventService {
         int validSeen = 0;
         int excluded = 0;
         int batchSize = Math.max(100, Math.min(200, query.size()));
-        // A second query is allowed for a partial page with missing cross-service references.
-        // In production the next query will simply return an empty page if the DB is exhausted.
         boolean checkedPartialTail = false;
         while (true) {
             List<Event> batch = eventRepositoryCustom.findPublishedEvents(
@@ -252,10 +263,16 @@ public class EventServiceImpl implements EventService {
             if (batch.isEmpty()) {
                 break;
             }
-            Map<Long, CategoryDto> pageCategories = loadCategories(batch);
-            Map<Long, UserDto> pageUsers = loadUsers(batch);
-            categories.putAll(pageCategories);
-            users.putAll(pageUsers);
+            List<Event> uncachedCategories = batch.stream()
+                    .filter(event -> !categories.containsKey(event.getCategoryId()))
+                    .toList();
+            List<Event> uncachedUsers = batch.stream()
+                    .filter(event -> !users.containsKey(event.getInitiatorId()))
+                    .toList();
+            categories.putAll(loadCategories(uncachedCategories));
+            users.putAll(loadUsers(uncachedUsers));
+            Map<Long, CategoryDto> pageCategories = categories;
+            Map<Long, UserDto> pageUsers = users;
             boolean missingInPage = false;
             for (Event event : batch) {
                 if (!pageCategories.containsKey(event.getCategoryId())
@@ -299,7 +316,68 @@ public class EventServiceImpl implements EventService {
         if (event.getState() != EventState.PUBLISHED) {
             throw new NotFoundException("Event with id " + eventId + " not found");
         }
-        return enrichWithViewsAndRequests(event);
+        return enrichWithRatingsAndRequests(event);
+    }
+
+    @Override
+    public List<EventShortDto> getRecommendedEvents(Long userId, int size) {
+        if (userId == null || userId <= 0 || size <= 0 || size > 100) {
+            throw new BadRequestException("Invalid recommendations request");
+        }
+        if (recommendationsClient == null) {
+            throw new ServiceUnavailableException("Recommendations client is not configured");
+        }
+
+        final int maxFetch = 1000;
+        int fetchLimit = size;
+        List<Event> eligible = List.of();
+        while (true) {
+            List<RecommendedEventProto> candidates =
+                    recommendationsClient.getRecommendationsForUser(userId, fetchLimit);
+            if (candidates.isEmpty()) {
+                break;
+            }
+            List<Long> ids = candidates.stream().map(RecommendedEventProto::getEventId)
+                    .distinct().toList();
+            Map<Long, Event> byId = new HashMap<>();
+            repository.findAllById(ids).forEach(event -> byId.put(event.getId(), event));
+            LocalDateTime now = LocalDateTime.now();
+            eligible = ids.stream().map(byId::get).filter(Objects::nonNull)
+                    .filter(event -> event.getState() == EventState.PUBLISHED)
+                    .filter(event -> event.getEventDate() != null && event.getEventDate().isAfter(now))
+                    .limit(size).toList();
+
+            if (eligible.size() == size || candidates.size() < fetchLimit || fetchLimit >= maxFetch) {
+                break;
+            }
+            fetchLimit = Math.min(maxFetch, fetchLimit * 2);
+        }
+        if (eligible.isEmpty()) {
+            return List.of();
+        }
+        return enrichShortEvents(eligible, getConfirmedRequestsCounts(eligible));
+    }
+
+    @Override
+    public void likeEvent(Long userId, Long eventId) {
+        if (userId == null || userId <= 0 || eventId == null || eventId <= 0) {
+            throw new BadRequestException("User and event IDs must be positive");
+        }
+        Event event = getEventEntity(eventId);
+        if (event.getState() != EventState.PUBLISHED) {
+            throw new NotFoundException("Event with id " + eventId + " not found");
+        }
+        if (event.getEventDate() == null || !event.getEventDate().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Likes are allowed only after the event date");
+        }
+        getUser(userId);
+        if (!requestServiceClient.isConfirmedParticipant(eventId, userId)) {
+            throw new BadRequestException("Only confirmed participants may like an event");
+        }
+        if (userActionClient == null) {
+            throw new ServiceUnavailableException("Collector client is not configured");
+        }
+        userActionClient.sendLike(userId, eventId);
     }
 
     @Override
@@ -317,8 +395,7 @@ public class EventServiceImpl implements EventService {
         List<Event> events = new ArrayList<>(repository.findAllById(eventIds));
         events.sort(Comparator.comparing(Event::getId));
         Map<Long, Long> confirmedCounts = getConfirmedRequestsCounts(events);
-        Map<Long, Long> viewsCounts = getViewsCounts(events);
-        return enrichShortEvents(events, confirmedCounts, viewsCounts);
+        return enrichShortEvents(events, confirmedCounts);
     }
 
     @Override
@@ -369,14 +446,13 @@ public class EventServiceImpl implements EventService {
         return category;
     }
 
-    private EventFullDto enrichWithViewsAndRequests(Event event) {
+    private EventFullDto enrichWithRatingsAndRequests(Event event) {
         Map<Long, Long> confirmedCounts = getConfirmedRequestsCounts(List.of(event));
-        Map<Long, Long> viewsCounts = getViewsCounts(List.of(event));
-        return enrichFullEvents(List.of(event), confirmedCounts, viewsCounts).get(0);
+        return enrichFullEvents(List.of(event), confirmedCounts).get(0);
     }
 
-    private List<EventFullDto> enrichFullEvents(List<Event> events, Map<Long, Long> confirmedCounts,
-                                                 Map<Long, Long> viewsCounts) {
+    private List<EventFullDto> enrichFullEvents(List<Event> events, Map<Long, Long> confirmedCounts) {
+        Map<Long, Double> ratings = getRatingScores(events);
         Map<Long, CategoryDto> categories = loadCategories(events);
         Map<Long, UserDto> users = loadUsers(events);
         return events.stream().map(event -> {
@@ -384,26 +460,25 @@ public class EventServiceImpl implements EventService {
             dto.setCategory(requireCategory(categories, event.getCategoryId()));
             dto.setInitiator(toShortUser(requireUser(users, event.getInitiatorId())));
             dto.setConfirmedRequests(confirmedCounts.getOrDefault(event.getId(), 0L));
-            dto.setViews(viewsCounts.getOrDefault(event.getId(), 0L));
+            dto.setRating(ratings.getOrDefault(event.getId(), 0.0));
             return dto;
         }).toList();
     }
 
-    private List<EventShortDto> enrichShortEvents(List<Event> events, Map<Long, Long> confirmedCounts,
-                                                   Map<Long, Long> viewsCounts) {
-        return enrichShortEvents(events, confirmedCounts, viewsCounts,
-                loadCategories(events), loadUsers(events));
+    private List<EventShortDto> enrichShortEvents(List<Event> events, Map<Long, Long> confirmedCounts) {
+        return enrichShortEvents(events, confirmedCounts,
+                loadCategories(events), loadUsers(events), getRatingScores(events));
     }
 
     private List<EventShortDto> enrichShortEvents(List<Event> events, Map<Long, Long> confirmedCounts,
-                                                   Map<Long, Long> viewsCounts,
-                                                   Map<Long, CategoryDto> categories, Map<Long, UserDto> users) {
+                                                   Map<Long, CategoryDto> categories, Map<Long, UserDto> users,
+                                                   Map<Long, Double> ratings) {
         return events.stream().map(event -> {
             EventShortDto dto = mapper.toShortDto(event);
             dto.setCategory(requireCategory(categories, event.getCategoryId()));
             dto.setInitiator(toShortUser(requireUser(users, event.getInitiatorId())));
             dto.setConfirmedRequests(confirmedCounts.getOrDefault(event.getId(), 0L));
-            dto.setViews(viewsCounts.getOrDefault(event.getId(), 0L));
+            dto.setRating(ratings.getOrDefault(event.getId(), 0.0));
             return dto;
         }).toList();
     }
@@ -457,6 +532,26 @@ public class EventServiceImpl implements EventService {
             Map<Long, Long> counts = requestServiceClient.getConfirmedCounts(eventIds);
             if (counts != null) {
                 result.putAll(counts);
+            }
+        }
+        return result;
+    }
+
+    private Map<Long, Double> getRatingScores(List<Event> events) {
+        if (events == null || events.isEmpty() || recommendationsClient == null) {
+            return Map.of();
+        }
+        Map<Long, Double> result = new HashMap<>();
+        for (int from = 0; from < events.size(); from += 100) {
+            List<Long> ids = events.subList(from, Math.min(from + 100, events.size()))
+                    .stream().map(Event::getId).toList();
+            try {
+                List<RecommendedEventProto> scores = recommendationsClient.getInteractionsCount(ids);
+                for (RecommendedEventProto score : scores) {
+                    result.put(score.getEventId(), score.getScore());
+                }
+            } catch (RuntimeException exception) {
+                throw new ServiceUnavailableException("Could not fetch event ratings from Analyzer", exception);
             }
         }
         return result;
